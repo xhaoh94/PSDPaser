@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { ConfigProvider, theme, Layout, Typography, Spin, message } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import { useUiStore, usePsdStore, useSelectionStore } from './stores';
+import { useUiStore, usePsdStore } from './stores';
 import { FileList } from './components/FileList';
 import { ThemeToggle } from './components/ThemeToggle';
 import { CanvasViewer } from './components/CanvasViewer';
@@ -9,7 +9,6 @@ import { LayerTree } from './components/LayerTree';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { parsePsdFromFile, checkFileSizeWarning } from './utils/psdParser';
 import type { PsdFile } from './hooks/useFileSystem';
-import type { PsdLayer } from './types/psd';
 import './App.css';
 
 const { Header, Sider, Content } = Layout;
@@ -18,7 +17,6 @@ const { Title, Text } = Typography;
 function App() {
   const { theme: currentTheme } = useUiStore();
   const { setDocument, setLoading, setError, isLoading, document: psdDoc, fileName } = usePsdStore();
-  const { selectLayer, setOverlappingLayers } = useSelectionStore();
   const [selectedFile, setSelectedFile] = useState<PsdFile | null>(null);
 
   // 根据主题添加/移除 dark 类
@@ -52,15 +50,6 @@ function App() {
       message.error(errorMsg);
     }
   };
-
-  // 处理 Canvas 点击
-  const handleLayerClick = useCallback(
-    (layer: PsdLayer | null, layers: PsdLayer[]) => {
-      selectLayer(layer);
-      setOverlappingLayers(layers);
-    },
-    [selectLayer, setOverlappingLayers]
-  );
 
   const isDark = currentTheme === 'dark';
 
@@ -138,7 +127,7 @@ function App() {
             )}
 
             {psdDoc && !isLoading && (
-              <CanvasViewer onLayerClick={handleLayerClick} />
+              <CanvasViewer />
             )}
           </Content>
 

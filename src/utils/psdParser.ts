@@ -1,4 +1,5 @@
-import { readPsd, Psd, Layer } from 'ag-psd';
+import { readPsd } from 'ag-psd';
+import type { Psd, Layer } from 'ag-psd';
 import type {
   PsdDocument,
   PsdLayer,
@@ -17,6 +18,42 @@ function rgbToHex(r: number, g: number, b: number): string {
     return hex.length === 1 ? '0' + hex : hex;
   };
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+}
+
+/**
+ * 从 ag-psd 颜色对象提取 HEX 颜色
+ */
+function colorToHex(color: unknown): string {
+  if (!color || typeof color !== 'object') return '#000000';
+  const c = color as Record<string, unknown>;
+  // 尝试 RGB 格式 (0-255)
+  if ('r' in c && 'g' in c && 'b' in c) {
+    return rgbToHex(
+      Number(c.r) || 0,
+      Number(c.g) || 0,
+      Number(c.b) || 0
+    );
+  }
+  // 尝试 FRGB 格式 (0-1)
+  if ('fr' in c && 'fg' in c && 'fb' in c) {
+    return rgbToHex(
+      (Number(c.fr) || 0) * 255,
+      (Number(c.fg) || 0) * 255,
+      (Number(c.fb) || 0) * 255
+    );
+  }
+  return '#000000';
+}
+
+/**
+ * 解析 UnitsValue 为数字
+ */
+function unitsValueToNumber(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (value && typeof value === 'object' && 'value' in value) {
+    return Number((value as { value: unknown }).value) || 0;
+  }
+  return 0;
 }
 
 /**
@@ -60,29 +97,27 @@ function extractTextInfo(layer: Layer): TextLayerInfo | undefined {
 
   const text = layer.text;
   const style = text.style || {};
-  const font = style.font || {};
+  const font = (style as Record<string, unknown>).font as Record<string, unknown> | undefined;
 
   // 获取填充颜色
   let color = '#000000';
   if (style.fillColor) {
-    const c = style.fillColor;
-    color = rgbToHex(c.r ?? 0, c.g ?? 0, c.b ?? 0);
+    color = colorToHex(style.fillColor);
   }
 
   // 获取描边颜色
   let strokeColor: string | undefined;
-  if (style.strokeColor) {
-    const c = style.strokeColor;
-    strokeColor = rgbToHex(c.r ?? 0, c.g ?? 0, c.b ?? 0);
+  if ((style as Record<string, unknown>).strokeColor) {
+    strokeColor = colorToHex((style as Record<string, unknown>).strokeColor);
   }
 
   return {
     text: text.text || '',
-    fontFamily: font.name || 'Unknown',
+    fontFamily: (font?.name as string) || 'Unknown',
     fontSize: style.fontSize || 12,
     color,
     strokeColor,
-    strokeWidth: style.strokeWidth,
+    strokeWidth: (style as Record<string, unknown>).strokeWidth as number | undefined,
     lineHeight: style.leading,
     letterSpacing: style.tracking ? style.tracking / 1000 : undefined,
     textAlign: text.paragraphStyle?.justification as TextLayerInfo['textAlign'],
@@ -129,23 +164,19 @@ function extractEffects(layer: Layer): LayerEffects | undefined {
   // 阴影
   if (layer.effects.dropShadow) {
     effects.dropShadow = layer.effects.dropShadow.map(shadow => ({
-      color: shadow.color
-        ? rgbToHex(shadow.color.r ?? 0, shadow.color.g ?? 0, shadow.color.b ?? 0)
-        : '#000000',
+      color: colorToHex(shadow.color),
       opacity: shadow.opacity ?? 1,
       angle: shadow.angle ?? 120,
-      distance: shadow.distance ?? 5,
-      blur: shadow.blur ?? 5,
+      distance: unitsValueToNumber(shadow.distance),
+      blur: unitsValueToNumber((shadow as Record<string, unknown>).blur ?? (shadow as Record<string, unknown>).size ?? 5),
     }));
   }
 
   // 描边
   if (layer.effects.stroke) {
     effects.stroke = layer.effects.stroke.map(stroke => ({
-      color: stroke.color
-        ? rgbToHex(stroke.color.r ?? 0, stroke.color.g ?? 0, stroke.color.b ?? 0)
-        : '#000000',
-      width: stroke.size ?? 1,
+      color: colorToHex(stroke.color),
+      width: unitsValueToNumber(stroke.size),
       position: (stroke.position as 'inside' | 'center' | 'outside') || 'outside',
     }));
   }
@@ -153,13 +184,11 @@ function extractEffects(layer: Layer): LayerEffects | undefined {
   // 内阴影
   if (layer.effects.innerShadow) {
     effects.innerShadow = layer.effects.innerShadow.map(shadow => ({
-      color: shadow.color
-        ? rgbToHex(shadow.color.r ?? 0, shadow.color.g ?? 0, shadow.color.b ?? 0)
-        : '#000000',
+      color: colorToHex(shadow.color),
       opacity: shadow.opacity ?? 1,
       angle: shadow.angle ?? 120,
-      distance: shadow.distance ?? 5,
-      blur: shadow.blur ?? 5,
+      distance: unitsValueToNumber(shadow.distance),
+      blur: unitsValueToNumber((shadow as Record<string, unknown>).blur ?? (shadow as Record<string, unknown>).size ?? 5),
     }));
   }
 

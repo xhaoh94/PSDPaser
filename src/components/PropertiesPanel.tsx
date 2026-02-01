@@ -1,30 +1,19 @@
 import React from 'react';
-import { Typography, Descriptions, Tag, Empty, Divider, Space, Tooltip } from 'antd';
+import { Typography, Descriptions, Tag, Empty, Divider, Space, Button } from 'antd';
 import {
   FontSizeOutlined,
   PictureOutlined,
   BgColorsOutlined,
   ColumnWidthOutlined,
-  ColumnHeightOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
 import { useSelectionStore } from '../stores';
 import { getLayerSize } from '../types/psd';
+import { CopyableValue, CopyableColor } from './CopyableValue';
+import { exportLayerAsPng, canExportLayer } from '../utils/exportLayer';
 import type { PsdLayer } from '../types/psd';
 
-const { Text, Title } = Typography;
-
-/**
- * 颜色显示组件
- */
-const ColorDisplay: React.FC<{ color: string; label: string }> = ({ color, label }) => (
-  <div className="flex items-center gap-2">
-    <div
-      className="w-5 h-5 rounded border border-gray-600"
-      style={{ backgroundColor: color }}
-    />
-    <Text className="font-mono text-sm">{color}</Text>
-  </div>
-);
+const { Title } = Typography;
 
 /**
  * 文本图层属性
@@ -35,7 +24,7 @@ const TextProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
 
   return (
     <>
-      <Divider orientation="left" plain>
+      <Divider plain>
         <Space>
           <FontSizeOutlined />
           <span>文本属性</span>
@@ -44,34 +33,30 @@ const TextProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
 
       <Descriptions column={1} size="small" labelStyle={{ width: 80 }}>
         <Descriptions.Item label="文本内容">
-          <Tooltip title={textInfo.text}>
-            <Text ellipsis style={{ maxWidth: 150 }}>
-              {textInfo.text}
-            </Text>
-          </Tooltip>
+          <CopyableValue value={textInfo.text} ellipsis maxWidth={150} mono={false} />
         </Descriptions.Item>
         <Descriptions.Item label="字体">
-          <Text className="font-mono text-sm">{textInfo.fontFamily}</Text>
+          <CopyableValue value={textInfo.fontFamily} />
         </Descriptions.Item>
         <Descriptions.Item label="字号">
-          <Text className="font-mono text-sm">{textInfo.fontSize}px</Text>
+          <CopyableValue value={`${textInfo.fontSize}px`} />
         </Descriptions.Item>
         <Descriptions.Item label="颜色">
-          <ColorDisplay color={textInfo.color} label="填充色" />
+          <CopyableColor color={textInfo.color} />
         </Descriptions.Item>
         {textInfo.strokeColor && (
           <Descriptions.Item label="描边色">
-            <ColorDisplay color={textInfo.strokeColor} label="描边色" />
+            <CopyableColor color={textInfo.strokeColor} />
           </Descriptions.Item>
         )}
         {textInfo.lineHeight && (
           <Descriptions.Item label="行高">
-            <Text className="font-mono text-sm">{textInfo.lineHeight}px</Text>
+            <CopyableValue value={`${textInfo.lineHeight}px`} />
           </Descriptions.Item>
         )}
         {textInfo.letterSpacing && (
           <Descriptions.Item label="字间距">
-            <Text className="font-mono text-sm">{textInfo.letterSpacing}</Text>
+            <CopyableValue value={`${textInfo.letterSpacing}`} />
           </Descriptions.Item>
         )}
         {textInfo.textAlign && (
@@ -100,7 +85,7 @@ const ImageProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
 
   return (
     <>
-      <Divider orientation="left" plain>
+      <Divider plain>
         <Space>
           <PictureOutlined />
           <span>图片属性</span>
@@ -109,18 +94,16 @@ const ImageProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
 
       <Descriptions column={1} size="small" labelStyle={{ width: 80 }}>
         <Descriptions.Item label="资源名称">
-          <Text className="font-mono text-sm">{imageInfo.name}</Text>
+          <CopyableValue value={imageInfo.name} ellipsis maxWidth={150} />
         </Descriptions.Item>
         {imageInfo.linkedFileName && (
           <Descriptions.Item label="链接文件">
-            <Text className="font-mono text-sm">{imageInfo.linkedFileName}</Text>
+            <CopyableValue value={imageInfo.linkedFileName} ellipsis maxWidth={150} />
           </Descriptions.Item>
         )}
         {imageInfo.originalWidth && imageInfo.originalHeight && (
           <Descriptions.Item label="原始尺寸">
-            <Text className="font-mono text-sm">
-              {imageInfo.originalWidth} x {imageInfo.originalHeight}
-            </Text>
+            <CopyableValue value={`${imageInfo.originalWidth} x ${imageInfo.originalHeight}`} />
           </Descriptions.Item>
         )}
       </Descriptions>
@@ -140,7 +123,7 @@ const EffectsProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
 
   return (
     <>
-      <Divider orientation="left" plain>
+      <Divider plain>
         <Space>
           <BgColorsOutlined />
           <span>效果</span>
@@ -151,20 +134,20 @@ const EffectsProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
         {effects.dropShadow?.map((shadow, i) => (
           <div key={`drop-${i}`} className="flex items-center gap-2">
             <Tag color="blue">投影</Tag>
-            <ColorDisplay color={shadow.color} label="阴影色" />
+            <CopyableColor color={shadow.color} />
           </div>
         ))}
         {effects.innerShadow?.map((shadow, i) => (
           <div key={`inner-${i}`} className="flex items-center gap-2">
             <Tag color="purple">内阴影</Tag>
-            <ColorDisplay color={shadow.color} label="阴影色" />
+            <CopyableColor color={shadow.color} />
           </div>
         ))}
         {effects.stroke?.map((stroke, i) => (
           <div key={`stroke-${i}`} className="flex items-center gap-2">
             <Tag color="green">描边</Tag>
-            <ColorDisplay color={stroke.color} label="描边色" />
-            <Text className="text-xs text-gray-400">{stroke.width}px</Text>
+            <CopyableColor color={stroke.color} />
+            <CopyableValue value={`${stroke.width}px`} />
           </div>
         ))}
       </div>
@@ -200,19 +183,25 @@ export const PropertiesPanel: React.FC = () => {
   return (
     <div className="h-full flex flex-col overflow-auto">
       {/* 标题 */}
-      <div className="p-4 border-b border-gray-700">
+      <div className="p-4 border-b border-gray-700 flex items-center justify-between">
         <Title level={5} className="!mb-0">属性</Title>
+        {canExportLayer(selectedLayer) && (
+          <Button
+            type="primary"
+            size="small"
+            icon={<DownloadOutlined />}
+            onClick={() => exportLayerAsPng(selectedLayer)}
+          >
+            导出 PNG
+          </Button>
+        )}
       </div>
 
       <div className="p-4 space-y-4 overflow-auto">
         {/* 基础信息 */}
         <Descriptions column={1} size="small" labelStyle={{ width: 80 }}>
           <Descriptions.Item label="图层名称">
-            <Tooltip title={selectedLayer.name}>
-              <Text strong ellipsis style={{ maxWidth: 150 }}>
-                {selectedLayer.name}
-              </Text>
-            </Tooltip>
+            <CopyableValue value={selectedLayer.name} ellipsis maxWidth={150} mono={false} />
           </Descriptions.Item>
           <Descriptions.Item label="类型">
             <Tag color="blue">{selectedLayer.type}</Tag>
@@ -223,9 +212,7 @@ export const PropertiesPanel: React.FC = () => {
             </Tag>
           </Descriptions.Item>
           <Descriptions.Item label="透明度">
-            <Text className="font-mono text-sm">
-              {Math.round(selectedLayer.opacity * 100)}%
-            </Text>
+            <CopyableValue value={`${Math.round(selectedLayer.opacity * 100)}%`} />
           </Descriptions.Item>
           {selectedLayer.blendMode && (
             <Descriptions.Item label="混合模式">
@@ -235,7 +222,7 @@ export const PropertiesPanel: React.FC = () => {
         </Descriptions>
 
         {/* 尺寸和位置 */}
-        <Divider orientation="left" plain>
+        <Divider plain>
           <Space>
             <ColumnWidthOutlined />
             <span>尺寸位置</span>
@@ -244,16 +231,16 @@ export const PropertiesPanel: React.FC = () => {
 
         <Descriptions column={2} size="small">
           <Descriptions.Item label="宽度">
-            <Text className="font-mono text-sm">{size.width}px</Text>
+            <CopyableValue value={`${size.width}px`} />
           </Descriptions.Item>
           <Descriptions.Item label="高度">
-            <Text className="font-mono text-sm">{size.height}px</Text>
+            <CopyableValue value={`${size.height}px`} />
           </Descriptions.Item>
           <Descriptions.Item label="X">
-            <Text className="font-mono text-sm">{bounds.left}px</Text>
+            <CopyableValue value={`${bounds.left}px`} />
           </Descriptions.Item>
           <Descriptions.Item label="Y">
-            <Text className="font-mono text-sm">{bounds.top}px</Text>
+            <CopyableValue value={`${bounds.top}px`} />
           </Descriptions.Item>
         </Descriptions>
 

@@ -91,7 +91,7 @@ export const LayerTree: React.FC = () => {
   // 处理选择
   const handleSelect = (
     selectedKeys: React.Key[],
-    info: { node: DataNode }
+    _info: { node: DataNode }
   ) => {
     if (selectedKeys.length > 0) {
       const layerId = selectedKeys[0] as string;

@@ -1,7 +1,8 @@
 import React from 'react';
 import { List, Button, Typography, Space, Empty, Spin, Alert } from 'antd';
 import { FolderOpenOutlined, FileOutlined, FileImageOutlined } from '@ant-design/icons';
-import { useFileSystem, PsdFile } from '../hooks/useFileSystem';
+import { useFileSystem } from '../hooks/useFileSystem';
+import type { PsdFile } from '../hooks/useFileSystem';
 
 const { Text } = Typography;
 
