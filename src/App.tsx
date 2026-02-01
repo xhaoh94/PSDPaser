@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ConfigProvider, theme, Layout, Typography, Spin, message } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import { useUiStore, usePsdStore } from './stores';
+import { useUiStore, usePsdStore, useSelectionStore } from './stores';
 import { FileList } from './components/FileList';
 import { ThemeToggle } from './components/ThemeToggle';
+import { CanvasViewer } from './components/CanvasViewer';
+import { LayerTree } from './components/LayerTree';
+import { PropertiesPanel } from './components/PropertiesPanel';
 import { parsePsdFromFile, checkFileSizeWarning } from './utils/psdParser';
 import type { PsdFile } from './hooks/useFileSystem';
+import type { PsdLayer } from './types/psd';
 import './App.css';
 
 const { Header, Sider, Content } = Layout;
@@ -13,7 +17,8 @@ const { Title, Text } = Typography;
 
 function App() {
   const { theme: currentTheme } = useUiStore();
-  const { setDocument, setLoading, setError, isLoading, document, fileName } = usePsdStore();
+  const { setDocument, setLoading, setError, isLoading, document: psdDoc, fileName } = usePsdStore();
+  const { selectLayer, setOverlappingLayers } = useSelectionStore();
   const [selectedFile, setSelectedFile] = useState<PsdFile | null>(null);
 
   // 根据主题添加/移除 dark 类
@@ -48,6 +53,15 @@ function App() {
     }
   };
 
+  // 处理 Canvas 点击
+  const handleLayerClick = useCallback(
+    (layer: PsdLayer | null, layers: PsdLayer[]) => {
+      selectLayer(layer);
+      setOverlappingLayers(layers);
+    },
+    [selectLayer, setOverlappingLayers]
+  );
+
   const isDark = currentTheme === 'dark';
 
   return (
@@ -63,9 +77,10 @@ function App() {
       <Layout className={`min-h-screen ${isDark ? 'bg-gray-900' : 'bg-gray-100'}`}>
         {/* Header */}
         <Header
-          className={`flex items-center justify-between px-4 ${
+          className={`flex items-center justify-between px-4 h-14 ${
             isDark ? 'bg-gray-800' : 'bg-white'
           } border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}
+          style={{ height: 56, lineHeight: '56px' }}
         >
           <Title level={4} className="!mb-0 !text-blue-500">
             PSD 文件解析器
@@ -80,20 +95,31 @@ function App() {
           </div>
         </Header>
 
-        <Layout>
-          {/* 左侧面板 - 文件列表 */}
+        <Layout style={{ height: 'calc(100vh - 56px)' }}>
+          {/* 左侧面板 - 文件列表 + 图层树 */}
           <Sider
             width={280}
             className={`${isDark ? 'bg-gray-800' : 'bg-white'} border-r ${
               isDark ? 'border-gray-700' : 'border-gray-200'
             }`}
+            style={{ height: '100%', overflow: 'hidden' }}
           >
-            <FileList onFileSelect={handleFileSelect} selectedFile={selectedFile} />
+            <div className="h-full flex flex-col">
+              {/* 文件列表（占 1/3） */}
+              <div className="h-1/3 border-b border-gray-700 overflow-hidden">
+                <FileList onFileSelect={handleFileSelect} selectedFile={selectedFile} />
+              </div>
+              {/* 图层树（占 2/3） */}
+              <div className="flex-1 overflow-hidden">
+                <LayerTree />
+              </div>
+            </div>
           </Sider>
 
           {/* 主内容区 - Canvas */}
           <Content
             className={`relative ${isDark ? 'bg-gray-900' : 'bg-gray-100'}`}
+            style={{ height: '100%', overflow: 'hidden' }}
           >
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/20 z-10">
@@ -101,7 +127,7 @@ function App() {
               </div>
             )}
 
-            {!document && !isLoading && (
+            {!psdDoc && !isLoading && (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">
                   <Text type="secondary" className="text-lg">
@@ -111,23 +137,8 @@ function App() {
               </div>
             )}
 
-            {document && !isLoading && (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center">
-                  <Text className="text-lg block mb-2">
-                    已加载: {fileName}
-                  </Text>
-                  <Text type="secondary">
-                    尺寸: {document.width} x {document.height}
-                  </Text>
-                  <Text type="secondary" className="block">
-                    图层数: {document.layers.length}
-                  </Text>
-                  <div className="mt-4 text-sm text-gray-500">
-                    Canvas 渲染器将在后续任务中实现
-                  </div>
-                </div>
-              </div>
+            {psdDoc && !isLoading && (
+              <CanvasViewer onLayerClick={handleLayerClick} />
             )}
           </Content>
 
@@ -137,13 +148,9 @@ function App() {
             className={`${isDark ? 'bg-gray-800' : 'bg-white'} border-l ${
               isDark ? 'border-gray-700' : 'border-gray-200'
             }`}
+            style={{ height: '100%', overflow: 'hidden' }}
           >
-            <div className="p-4">
-              <Title level={5}>属性</Title>
-              <Text type="secondary">
-                选择图层后显示属性信息
-              </Text>
-            </div>
+            <PropertiesPanel />
           </Sider>
         </Layout>
       </Layout>
