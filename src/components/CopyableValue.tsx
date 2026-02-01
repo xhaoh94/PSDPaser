@@ -54,12 +54,12 @@ export const CopyableValue: React.FC<CopyableValueProps> = ({
       <Tooltip title={copied ? '已复制' : '点击复制'}>
         <button
           onClick={handleCopy}
-          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-gray-600 rounded cursor-pointer border-none bg-transparent"
+          className="p-0.5 hover:bg-gray-100 rounded cursor-pointer border-none bg-transparent transition-colors"
         >
           {copied ? (
-            <CheckOutlined className="text-green-400 text-xs" />
+            <CheckOutlined className="text-green-500 text-xs" />
           ) : (
-            <CopyOutlined className="text-gray-400 hover:text-white text-xs" />
+            <CopyOutlined className="text-gray-400 hover:text-blue-500 text-xs" />
           )}
         </button>
       </Tooltip>
@@ -99,12 +99,12 @@ export const CopyableColor: React.FC<CopyableColorProps> = ({ color }) => {
       <Tooltip title={copied ? '已复制' : '点击复制'}>
         <button
           onClick={handleCopy}
-          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-gray-600 rounded cursor-pointer border-none bg-transparent"
+          className="p-0.5 hover:bg-gray-100 rounded cursor-pointer border-none bg-transparent transition-colors"
         >
           {copied ? (
-            <CheckOutlined className="text-green-400 text-xs" />
+            <CheckOutlined className="text-green-500 text-xs" />
           ) : (
-            <CopyOutlined className="text-gray-400 hover:text-white text-xs" />
+            <CopyOutlined className="text-gray-400 hover:text-blue-500 text-xs" />
           )}
         </button>
       </Tooltip>

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Tree, Typography, Tooltip, Empty } from 'antd';
+import { Tree, Tooltip, Empty } from 'antd';
 import {
   FontSizeOutlined,
   PictureOutlined,
@@ -13,23 +13,21 @@ import type { DataNode } from 'antd/es/tree';
 import { usePsdStore, useSelectionStore } from '../stores';
 import type { PsdLayer, LayerType } from '../types/psd';
 
-const { Text } = Typography;
-
 /**
  * 获取图层类型图标
  */
 const getLayerIcon = (type: LayerType): React.ReactNode => {
   switch (type) {
     case 'text':
-      return <FontSizeOutlined className="text-blue-400" />;
+      return <FontSizeOutlined className="text-blue-500" />;
     case 'image':
-      return <PictureOutlined className="text-green-400" />;
+      return <PictureOutlined className="text-green-500" />;
     case 'group':
-      return <FolderOutlined className="text-yellow-400" />;
+      return <FolderOutlined className="text-yellow-500" />;
     case 'shape':
-      return <StarOutlined className="text-purple-400" />;
+      return <StarOutlined className="text-purple-500" />;
     case 'adjustment':
-      return <ControlOutlined className="text-orange-400" />;
+      return <ControlOutlined className="text-orange-500" />;
     default:
       return <PictureOutlined className="text-gray-400" />;
   }
@@ -45,24 +43,27 @@ const convertLayersToTreeData = (
   return layers.map((layer) => ({
     key: layer.id,
     title: (
-      <div className="flex items-center gap-2 py-1">
+      <div className="flex items-center gap-2 py-0.5">
         {/* 可见性图标 */}
-        {layer.visible ? (
-          <EyeOutlined className="text-gray-400 text-xs" />
-        ) : (
-          <EyeInvisibleOutlined className="text-gray-600 text-xs" />
-        )}
+        <div className="w-4 flex justify-center group">
+          {layer.visible ? (
+            <EyeOutlined className="text-gray-400 text-[10px] group-hover:text-gray-600" />
+          ) : (
+            <EyeInvisibleOutlined className="text-gray-300 text-[10px]" />
+          )}
+        </div>
         {/* 类型图标 */}
-        {getLayerIcon(layer.type)}
+        <div className="w-4 flex justify-center">
+          {getLayerIcon(layer.type)}
+        </div>
         {/* 图层名称 */}
-        <Tooltip title={layer.name} mouseEnterDelay={0.5}>
-          <Text
-            className={`text-sm ${layer.visible ? '' : 'opacity-50'}`}
-            ellipsis
-            style={{ maxWidth: 150 }}
+        <Tooltip title={layer.name} mouseEnterDelay={0.8}>
+          <span
+            className={`text-xs truncate ${layer.visible ? 'text-gray-700' : 'text-gray-400'}`}
+            style={{ maxWidth: 140 }}
           >
             {layer.name}
-          </Text>
+          </span>
         </Tooltip>
       </div>
     ),
@@ -81,6 +82,8 @@ export const LayerTree: React.FC = () => {
   const { document } = usePsdStore();
   const { selectedLayerId, selectLayer } = useSelectionStore();
   const { getAllLayers, getLayerById } = usePsdStore();
+  
+  const [expandedKeys, setExpandedKeys] = React.useState<React.Key[]>([]);
 
   // 转换图层数据
   const treeData = useMemo(() => {
@@ -104,28 +107,55 @@ export const LayerTree: React.FC = () => {
     }
   };
 
-  // 计算展开的键（默认展开所有组）
-  const expandedKeys = useMemo(() => {
-    const keys: string[] = [];
-    const collectGroupKeys = (layers: PsdLayer[]) => {
-      for (const layer of layers) {
-        if (layer.type === 'group' && layer.children) {
-          keys.push(layer.id);
-          collectGroupKeys(layer.children);
-        }
+  // 辅助函数：查找图层的父级路径
+  const findParentKeys = (layers: PsdLayer[], targetId: string, parents: string[] = []): string[] | null => {
+    for (const layer of layers) {
+      if (layer.id === targetId) {
+        return parents;
       }
-    };
-    if (document) {
-      collectGroupKeys(document.layers);
+      if (layer.children) {
+        const result = findParentKeys(layer.children, targetId, [...parents, layer.id]);
+        if (result) return result;
+      }
     }
-    return keys;
+    return null;
+  };
+
+  // 当文档加载时，默认展开所有组
+  React.useEffect(() => {
+    if (document) {
+      const keys: string[] = [];
+      const collectGroupKeys = (layers: PsdLayer[]) => {
+        for (const layer of layers) {
+          if (layer.type === 'group' && layer.children) {
+            keys.push(layer.id);
+            collectGroupKeys(layer.children);
+          }
+        }
+      };
+      collectGroupKeys(document.layers);
+      setExpandedKeys(keys);
+    }
   }, [document]);
+
+  // 当选中图层变化时，自动展开父组
+  React.useEffect(() => {
+    if (document && selectedLayerId) {
+      const parentKeys = findParentKeys(document.layers, selectedLayerId);
+      if (parentKeys && parentKeys.length > 0) {
+        setExpandedKeys(prev => {
+          const newKeys = new Set([...prev, ...parentKeys]);
+          return Array.from(newKeys);
+        });
+      }
+    }
+  }, [document, selectedLayerId]);
 
   if (!document) {
     return (
       <div className="h-full flex items-center justify-center p-4">
         <Empty
-          description="请先加载 PSD 文件"
+          description={<span className="text-gray-400 text-xs">请先加载文件</span>}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       </div>
@@ -135,27 +165,27 @@ export const LayerTree: React.FC = () => {
   const totalLayers = getAllLayers().length;
 
   return (
-    <div className="h-full flex flex-col">
-      {/* 标题 */}
-      <div className="p-4 border-b border-gray-700">
-        <Text strong className="text-base">图层</Text>
-        <Text type="secondary" className="ml-2 text-xs">
-          ({totalLayers})
-        </Text>
-      </div>
-
+    <div className="h-full flex flex-col bg-white">
       {/* 图层树 */}
-      <div className="flex-1 overflow-auto p-2">
+      <div className="flex-1 overflow-auto py-1">
         <Tree
+          className="file-tree"
           treeData={treeData}
           selectedKeys={selectedLayerId ? [selectedLayerId] : []}
-          defaultExpandedKeys={expandedKeys}
+          expandedKeys={expandedKeys}
+          onExpand={(keys) => setExpandedKeys(keys)}
           onSelect={handleSelect}
           showLine={{ showLeafIcon: false }}
           blockNode
           virtual
-          height={400}
         />
+      </div>
+      
+      {/* 底部统计 */}
+      <div className="px-4 py-2 border-t border-gray-100 text-center">
+        <span className="text-[10px] text-gray-400">
+          共 {totalLayers} 个图层
+        </span>
       </div>
     </div>
   );

@@ -47,7 +47,7 @@ export const LayerContextMenu: React.FC<LayerContextMenuProps> = ({
   onSelect,
   children,
   visible,
-  position,
+  position: _position,
   onVisibleChange,
 }) => {
   const menuItems = layers.map((layer, index) => ({
@@ -82,11 +82,6 @@ export const LayerContextMenu: React.FC<LayerContextMenuProps> = ({
       trigger={['contextMenu']}
       open={visible}
       onOpenChange={onVisibleChange}
-      dropdownRender={(menu) => (
-        <div style={{ position: 'fixed', left: position.x, top: position.y }}>
-          {menu}
-        </div>
-      )}
     >
       {children}
     </Dropdown>

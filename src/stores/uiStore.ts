@@ -14,7 +14,11 @@ interface UiState {
   // 右侧面板是否折叠
   rightPanelCollapsed: boolean;
   
+  // 鼠标在画布上的 PSD 坐标
+  cursorPosition: { x: number; y: number };
+  
   // Actions
+  setCursorPosition: (position: { x: number; y: number }) => void;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
   setScale: (scale: number) => void;
@@ -40,7 +44,9 @@ export const useUiStore = create<UiState>()(
       offset: { x: 0, y: 0 },
       leftPanelCollapsed: false,
       rightPanelCollapsed: false,
+      cursorPosition: { x: 0, y: 0 },
       
+      setCursorPosition: (position) => set({ cursorPosition: position }),
       setTheme: (theme) => set({ theme }),
       toggleTheme: () => set(state => ({
         theme: state.theme === 'dark' ? 'light' : 'dark'

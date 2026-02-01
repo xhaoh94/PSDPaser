@@ -41,7 +41,9 @@ export const usePsdStore = create<PsdState>((set, get) => ({
   isLoading: false,
   error: null,
   
-  setDocument: (doc, fileName) => set({ document: doc, fileName, error: null }),
+  setDocument: (doc, fileName) => {
+    set({ document: doc, fileName, error: null, isLoading: false });
+  },
   setLoading: (loading) => set({ isLoading: loading }),
   setError: (error) => set({ error, isLoading: false }),
   clearDocument: () => set({ document: null, fileName: null, error: null }),

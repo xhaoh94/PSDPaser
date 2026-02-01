@@ -18,14 +18,29 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const { document } = usePsdStore();
   const { selectedLayer, selectLayer, setOverlappingLayers, overlappingLayers, overlappingIndex } = useSelectionStore();
-  const { scale, offset } = useUiStore();
+  const { scale, offset, setCursorPosition } = useUiStore();
   const {
     handleWheel,
     handleMouseDown,
-    handleMouseMove,
+    handleMouseMove: handlePanMouseMove,
     handleMouseUp,
     isDragging,
   } = useCanvasTransform();
+
+  // 包装鼠标移动事件，同时处理平移和坐标更新
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    // 1. 处理平移
+    handlePanMouseMove(e);
+
+    // 2. 更新坐标
+    if (canvasRef.current) {
+       const rect = canvasRef.current.getBoundingClientRect();
+       const x = Math.round((e.clientX - rect.left - offset.x) / scale);
+       const y = Math.round((e.clientY - rect.top - offset.y) / scale);
+       setCursorPosition({ x, y });
+    }
+  }, [handlePanMouseMove, offset, scale, setCursorPosition]);
+
   const { cycleToNextLayer } = useLayerCycle();
 
   // 右键菜单状态
@@ -53,9 +68,10 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
 
   // 递归绘制图层
   const drawLayers = useCallback(
-    (ctx: CanvasRenderingContext2D, layers: PsdLayer[]) => {
-      // 从后往前绘制（底层先绘制）
-      for (let i = layers.length - 1; i >= 0; i--) {
+    (ctx: CanvasRenderingContext2D, layers: PsdLayer[], depth = 0) => {
+      // PSD 图层顺序：索引 0 = 底层（先绘制），索引 n-1 = 顶层（后绘制）
+      // 所以从前往后遍历
+      for (let i = 0; i < layers.length; i++) {
         const layer = layers[i];
 
         // 跳过隐藏图层
@@ -63,7 +79,7 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
 
         // 如果是组，递归绘制子图层
         if (layer.type === 'group' && layer.children) {
-          drawLayers(ctx, layer.children);
+          drawLayers(ctx, layer.children, depth + 1);
           continue;
         }
 
@@ -130,12 +146,8 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
     drawCheckerboard(ctx, document.width, document.height);
     ctx.restore();
 
-    // 绘制合成图像或图层
-    if (document.canvas) {
-      ctx.drawImage(document.canvas, 0, 0);
-    } else {
-      drawLayers(ctx, document.layers);
-    }
+    // 绘制图层
+    drawLayers(ctx, document.layers);
 
     // 绘制画布边框
     ctx.strokeStyle = '#666';
@@ -247,7 +259,7 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
     [selectLayer, onLayerClick, contextMenuLayers]
   );
 
-  // 递归查找点击位置的所有图层
+  // 递归查找点击位置的所有图层（从顶层到底层排序）
   const findLayersAtPoint = (
     layers: PsdLayer[],
     x: number,
@@ -255,8 +267,9 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
   ): PsdLayer[] => {
     const result: PsdLayer[] = [];
 
-    // 从顶层开始遍历
-    for (const layer of layers) {
+    // 从顶层开始遍历（数组末尾 = 顶层，最先检测）
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const layer = layers[i];
       if (!layer.visible) continue;
 
       // 如果是组，递归检查子图层
@@ -299,10 +312,6 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
           ref={canvasRef}
           className="block"
         />
-        {/* 缩放提示 */}
-        <div className="absolute bottom-4 right-4 bg-black/50 text-white px-2 py-1 rounded text-sm">
-          {Math.round(scale * 100)}%
-        </div>
         {/* Ctrl+点击提示 */}
         {overlappingLayers.length > 1 && (
           <div className="absolute bottom-4 left-4 bg-black/50 text-white px-2 py-1 rounded text-xs">

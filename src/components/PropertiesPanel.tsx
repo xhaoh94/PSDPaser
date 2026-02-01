@@ -1,19 +1,15 @@
 import React from 'react';
-import { Typography, Descriptions, Tag, Empty, Divider, Space, Button } from 'antd';
+import { Descriptions, Tag, Empty, Divider, Space } from 'antd';
 import {
   FontSizeOutlined,
   PictureOutlined,
   BgColorsOutlined,
   ColumnWidthOutlined,
-  DownloadOutlined,
 } from '@ant-design/icons';
 import { useSelectionStore } from '../stores';
 import { getLayerSize } from '../types/psd';
 import { CopyableValue, CopyableColor } from './CopyableValue';
-import { exportLayerAsPng, canExportLayer } from '../utils/exportLayer';
 import type { PsdLayer } from '../types/psd';
-
-const { Title } = Typography;
 
 /**
  * 文本图层属性
@@ -24,14 +20,14 @@ const TextProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
 
   return (
     <>
-      <Divider plain>
+      <Divider plain className="!text-text-muted !border-border !my-4 !text-xs font-medium">
         <Space>
           <FontSizeOutlined />
           <span>文本属性</span>
         </Space>
       </Divider>
 
-      <Descriptions column={1} size="small" labelStyle={{ width: 80 }}>
+      <Descriptions column={1} size="small" styles={{ label: { width: 80, color: '#a1a1aa' } }}>
         <Descriptions.Item label="文本内容">
           <CopyableValue value={textInfo.text} ellipsis maxWidth={150} mono={false} />
         </Descriptions.Item>
@@ -42,11 +38,17 @@ const TextProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
           <CopyableValue value={`${textInfo.fontSize}px`} />
         </Descriptions.Item>
         <Descriptions.Item label="颜色">
-          <CopyableColor color={textInfo.color} />
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-sm border border-gray-300 shadow-sm" style={{ backgroundColor: textInfo.color }}></div>
+            <CopyableColor color={textInfo.color} />
+          </div>
         </Descriptions.Item>
         {textInfo.strokeColor && (
           <Descriptions.Item label="描边色">
-            <CopyableColor color={textInfo.strokeColor} />
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-sm border border-gray-300 shadow-sm" style={{ backgroundColor: textInfo.strokeColor }}></div>
+              <CopyableColor color={textInfo.strokeColor} />
+            </div>
           </Descriptions.Item>
         )}
         {textInfo.lineHeight && (
@@ -85,14 +87,14 @@ const ImageProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
 
   return (
     <>
-      <Divider plain>
+      <Divider plain className="!text-text-muted !border-border !my-4 !text-xs font-medium">
         <Space>
           <PictureOutlined />
           <span>图片属性</span>
         </Space>
       </Divider>
 
-      <Descriptions column={1} size="small" labelStyle={{ width: 80 }}>
+      <Descriptions column={1} size="small" styles={{ label: { width: 80, color: '#a1a1aa' } }}>
         <Descriptions.Item label="资源名称">
           <CopyableValue value={imageInfo.name} ellipsis maxWidth={150} />
         </Descriptions.Item>
@@ -123,7 +125,7 @@ const EffectsProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
 
   return (
     <>
-      <Divider plain>
+      <Divider plain className="!text-text-muted !border-border !my-4 !text-xs font-medium">
         <Space>
           <BgColorsOutlined />
           <span>效果</span>
@@ -134,19 +136,28 @@ const EffectsProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
         {effects.dropShadow?.map((shadow, i) => (
           <div key={`drop-${i}`} className="flex items-center gap-2">
             <Tag color="blue">投影</Tag>
-            <CopyableColor color={shadow.color} />
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-sm border border-gray-300 shadow-sm" style={{ backgroundColor: shadow.color }}></div>
+              <CopyableColor color={shadow.color} />
+            </div>
           </div>
         ))}
         {effects.innerShadow?.map((shadow, i) => (
           <div key={`inner-${i}`} className="flex items-center gap-2">
             <Tag color="purple">内阴影</Tag>
-            <CopyableColor color={shadow.color} />
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-sm border border-gray-300 shadow-sm" style={{ backgroundColor: shadow.color }}></div>
+              <CopyableColor color={shadow.color} />
+            </div>
           </div>
         ))}
         {effects.stroke?.map((stroke, i) => (
           <div key={`stroke-${i}`} className="flex items-center gap-2">
             <Tag color="green">描边</Tag>
-            <CopyableColor color={stroke.color} />
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-sm border border-gray-300 shadow-sm" style={{ backgroundColor: stroke.color }}></div>
+              <CopyableColor color={stroke.color} />
+            </div>
             <CopyableValue value={`${stroke.width}px`} />
           </div>
         ))}
@@ -164,12 +175,9 @@ export const PropertiesPanel: React.FC = () => {
   if (!selectedLayer) {
     return (
       <div className="h-full flex flex-col">
-        <div className="p-4 border-b border-gray-700">
-          <Title level={5} className="!mb-0">属性</Title>
-        </div>
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex-1 flex items-center justify-center p-4 text-center">
           <Empty
-            description="选择图层查看属性"
+            description={<span className="text-text-muted text-xs">点击图层查看属性</span>}
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           />
         </div>
@@ -182,24 +190,9 @@ export const PropertiesPanel: React.FC = () => {
 
   return (
     <div className="h-full flex flex-col overflow-auto">
-      {/* 标题 */}
-      <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-        <Title level={5} className="!mb-0">属性</Title>
-        {canExportLayer(selectedLayer) && (
-          <Button
-            type="primary"
-            size="small"
-            icon={<DownloadOutlined />}
-            onClick={() => exportLayerAsPng(selectedLayer)}
-          >
-            导出 PNG
-          </Button>
-        )}
-      </div>
-
-      <div className="p-4 space-y-4 overflow-auto">
+      <div className="p-4 space-y-4 overflow-auto text-text-main">
         {/* 基础信息 */}
-        <Descriptions column={1} size="small" labelStyle={{ width: 80 }}>
+        <Descriptions column={1} size="small" styles={{ label: { width: 80, color: '#a1a1aa' }, content: { color: '#e4e4e7' } }}>
           <Descriptions.Item label="图层名称">
             <CopyableValue value={selectedLayer.name} ellipsis maxWidth={150} mono={false} />
           </Descriptions.Item>
@@ -222,14 +215,14 @@ export const PropertiesPanel: React.FC = () => {
         </Descriptions>
 
         {/* 尺寸和位置 */}
-        <Divider plain>
+        <Divider plain className="!text-text-muted !border-border !my-4 !text-xs font-medium">
           <Space>
             <ColumnWidthOutlined />
             <span>尺寸位置</span>
           </Space>
         </Divider>
 
-        <Descriptions column={2} size="small">
+        <Descriptions column={2} size="small" styles={{ label: { color: '#a1a1aa' }, content: { color: '#e4e4e7' } }}>
           <Descriptions.Item label="宽度">
             <CopyableValue value={`${size.width}px`} />
           </Descriptions.Item>
