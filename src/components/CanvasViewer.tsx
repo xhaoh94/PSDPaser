@@ -18,7 +18,7 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const { document } = usePsdStore();
   const { selectedLayer, selectLayer, setOverlappingLayers, overlappingLayers, overlappingIndex } = useSelectionStore();
-  const { scale, offset, setCursorPosition } = useUiStore();
+  const { scale, offset, setCursorPosition, centerCanvas } = useUiStore();
   const {
     handleWheel,
     handleMouseDown,
@@ -99,7 +99,7 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
     []
   );
 
-  // 绘制选中高亮
+  // 绘制选中高亮（双色边框：白色底边 + 蓝色主边）
   const drawSelection = useCallback(
     (ctx: CanvasRenderingContext2D, layer: PsdLayer) => {
       const { left, top, right, bottom } = layer.bounds;
@@ -107,10 +107,19 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
       const height = bottom - top;
 
       ctx.save();
-      ctx.strokeStyle = '#1890ff';
-      ctx.lineWidth = 2 / scale; // 保持线宽不受缩放影响
-      ctx.setLineDash([5 / scale, 5 / scale]);
+      
+      // 外层：白色实线边框（作为对比底色）
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4 / scale;
+      ctx.setLineDash([]);
       ctx.strokeRect(left, top, width, height);
+      
+      // 内层：蓝色虚线边框
+      ctx.strokeStyle = '#1890ff';
+      ctx.lineWidth = 2 / scale;
+      ctx.setLineDash([6 / scale, 4 / scale]);
+      ctx.strokeRect(left, top, width, height);
+      
       ctx.restore();
     },
     [scale]
@@ -162,10 +171,18 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
     ctx.restore();
   }, [document, offset, scale, selectedLayer, drawCheckerboard, drawLayers, drawSelection]);
 
-  // 监听变化重绘
+// 监听变化重绘
   useEffect(() => {
     draw();
   }, [draw]);
+
+  // 文档加载时居中显示
+  useEffect(() => {
+    if (document && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      centerCanvas(document.width, document.height, rect.width, rect.height);
+    }
+  }, [document, centerCanvas]);
 
   // 监听窗口大小变化
   useEffect(() => {
@@ -183,7 +200,7 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
     return () => container.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
-  // 处理点击事件
+// 处理点击事件
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       if (!document || !canvasRef.current || isDragging) return;
@@ -200,24 +217,33 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
       // 查找点击的图层
       const hitLayers = findLayersAtPoint(document.layers, psdX, psdY);
 
-      // 保存重叠图层列表
-      setOverlappingLayers(hitLayers);
-
-      // Ctrl+点击：循环选择重叠图层
-      if (e.ctrlKey && hitLayers.length > 1) {
-        cycleToNextLayer();
-        return;
+      // 如果有多个重叠图层，循环选择
+      if (hitLayers.length > 1) {
+        // 检查是否在同一位置点击（通过比较重叠图层列表）
+        const isSamePosition = 
+          overlappingLayers.length === hitLayers.length &&
+          overlappingLayers.every((layer, i) => layer.id === hitLayers[i]?.id);
+        
+        if (isSamePosition) {
+          // 同一位置再次点击，循环到下一个图层
+          cycleToNextLayer();
+        } else {
+          // 新位置，保存重叠图层并选择最顶层
+          setOverlappingLayers(hitLayers);
+          selectLayer(hitLayers[0]);
+        }
+      } else {
+        // 只有一个或没有图层
+        setOverlappingLayers(hitLayers);
+        const topLayer = hitLayers[0] || null;
+        selectLayer(topLayer);
       }
-
-      // 普通点击：选择最顶层图层
-      const topLayer = hitLayers[0] || null;
-      selectLayer(topLayer);
 
       if (onLayerClick) {
-        onLayerClick(topLayer, hitLayers);
+        onLayerClick(selectedLayer, hitLayers);
       }
     },
-    [document, offset, scale, onLayerClick, isDragging, selectLayer, setOverlappingLayers, cycleToNextLayer]
+    [document, offset, scale, onLayerClick, isDragging, selectLayer, setOverlappingLayers, cycleToNextLayer, overlappingLayers, selectedLayer]
   );
 
   // 处理右键菜单
@@ -308,14 +334,14 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
-        <canvas
+<canvas
           ref={canvasRef}
           className="block"
         />
-        {/* Ctrl+点击提示 */}
+        {/* 点击切换图层提示 */}
         {overlappingLayers.length > 1 && (
           <div className="absolute bottom-4 left-4 bg-black/50 text-white px-2 py-1 rounded text-xs">
-            Ctrl+点击切换图层 ({overlappingIndex + 1}/{overlappingLayers.length})
+            点击切换图层 ({overlappingIndex + 1}/{overlappingLayers.length})
           </div>
         )}
       </div>

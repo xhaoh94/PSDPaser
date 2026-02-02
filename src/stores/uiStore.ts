@@ -17,8 +17,12 @@ interface UiState {
   // 鼠标在画布上的 PSD 坐标
   cursorPosition: { x: number; y: number };
   
+  // 图层面板高度百分比 (0-100)
+  layerPanelHeight: number;
+
   // Actions
   setCursorPosition: (position: { x: number; y: number }) => void;
+  setLayerPanelHeight: (height: number) => void;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
   setScale: (scale: number) => void;
@@ -29,6 +33,8 @@ interface UiState {
   resetOffset: () => void;
   toggleLeftPanel: () => void;
   toggleRightPanel: () => void;
+  // 居中画布
+  centerCanvas: (docWidth: number, docHeight: number, containerWidth: number, containerHeight: number) => void;
 }
 
 // 缩放限制
@@ -45,8 +51,10 @@ export const useUiStore = create<UiState>()(
       leftPanelCollapsed: false,
       rightPanelCollapsed: false,
       cursorPosition: { x: 0, y: 0 },
+      layerPanelHeight: 50, // 默认 50%
       
       setCursorPosition: (position) => set({ cursorPosition: position }),
+      setLayerPanelHeight: (height) => set({ layerPanelHeight: Math.max(10, Math.min(90, height)) }), // 限制在 10% - 90% 之间
       setTheme: (theme) => set({ theme }),
       toggleTheme: () => set(state => ({
         theme: state.theme === 'dark' ? 'light' : 'dark'
@@ -71,15 +79,38 @@ export const useUiStore = create<UiState>()(
       toggleLeftPanel: () => set(state => ({
         leftPanelCollapsed: !state.leftPanelCollapsed
       })),
-      toggleRightPanel: () => set(state => ({
+toggleRightPanel: () => set(state => ({
         rightPanelCollapsed: !state.rightPanelCollapsed
       })),
+      
+      centerCanvas: (docWidth, docHeight, containerWidth, containerHeight) => {
+        // 计算合适的缩放比例，使画布适应容器（留出边距）
+        const padding = 40;
+        const availableWidth = containerWidth - padding * 2;
+        const availableHeight = containerHeight - padding * 2;
+        
+        const scaleX = availableWidth / docWidth;
+        const scaleY = availableHeight / docHeight;
+        const fitScale = Math.min(scaleX, scaleY, 1); // 不超过100%
+        
+        // 计算居中偏移
+        const scaledWidth = docWidth * fitScale;
+        const scaledHeight = docHeight * fitScale;
+        const offsetX = (containerWidth - scaledWidth) / 2;
+        const offsetY = (containerHeight - scaledHeight) / 2;
+        
+        set({ 
+          scale: fitScale,
+          offset: { x: offsetX, y: offsetY }
+        });
+      },
     }),
-    {
-      name: 'psd-viewer-ui', // localStorage key
-      partialize: (state) => ({
-        theme: state.theme, // 只持久化主题
-      }),
-    }
+      {
+        name: 'psd-viewer-ui', // localStorage key
+        partialize: (state) => ({
+          theme: state.theme, // 只持久化主题
+          layerPanelHeight: state.layerPanelHeight, // 持久化面板高度
+        }),
+      }
   )
 );

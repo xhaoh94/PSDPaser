@@ -27,6 +27,23 @@ body {
   padding: 0 6px !important;
   min-height: 28px !important;
   line-height: 28px !important;
+  display: flex !important;
+  align-items: center !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+}
+
+.file-tree .ant-tree-title {
+  display: inline-block !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: 150px !important;
+}
+
+.file-tree .ant-tree-iconEle {
+  flex-shrink: 0 !important;
+  margin-right: 4px !important;
 }
 
 .file-tree .ant-tree-node-content-wrapper:hover {

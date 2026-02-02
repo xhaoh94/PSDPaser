@@ -38,17 +38,11 @@ const TextProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
           <CopyableValue value={`${textInfo.fontSize}px`} />
         </Descriptions.Item>
         <Descriptions.Item label="颜色">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm border border-gray-300 shadow-sm" style={{ backgroundColor: textInfo.color }}></div>
-            <CopyableColor color={textInfo.color} />
-          </div>
+          <CopyableColor color={textInfo.color} />
         </Descriptions.Item>
         {textInfo.strokeColor && (
           <Descriptions.Item label="描边色">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm border border-gray-300 shadow-sm" style={{ backgroundColor: textInfo.strokeColor }}></div>
-              <CopyableColor color={textInfo.strokeColor} />
-            </div>
+            <CopyableColor color={textInfo.strokeColor} />
           </Descriptions.Item>
         )}
         {textInfo.lineHeight && (
@@ -136,28 +130,19 @@ const EffectsProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
         {effects.dropShadow?.map((shadow, i) => (
           <div key={`drop-${i}`} className="flex items-center gap-2">
             <Tag color="blue">投影</Tag>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm border border-gray-300 shadow-sm" style={{ backgroundColor: shadow.color }}></div>
-              <CopyableColor color={shadow.color} />
-            </div>
+            <CopyableColor color={shadow.color} />
           </div>
         ))}
         {effects.innerShadow?.map((shadow, i) => (
           <div key={`inner-${i}`} className="flex items-center gap-2">
             <Tag color="purple">内阴影</Tag>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm border border-gray-300 shadow-sm" style={{ backgroundColor: shadow.color }}></div>
-              <CopyableColor color={shadow.color} />
-            </div>
+            <CopyableColor color={shadow.color} />
           </div>
         ))}
         {effects.stroke?.map((stroke, i) => (
           <div key={`stroke-${i}`} className="flex items-center gap-2">
             <Tag color="green">描边</Tag>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm border border-gray-300 shadow-sm" style={{ backgroundColor: stroke.color }}></div>
-              <CopyableColor color={stroke.color} />
-            </div>
+            <CopyableColor color={stroke.color} />
             <CopyableValue value={`${stroke.width}px`} />
           </div>
         ))}
@@ -204,8 +189,11 @@ export const PropertiesPanel: React.FC = () => {
               {selectedLayer.visible ? '可见' : '隐藏'}
             </Tag>
           </Descriptions.Item>
-          <Descriptions.Item label="透明度">
-            <CopyableValue value={`${Math.round(selectedLayer.opacity * 100)}%`} />
+<Descriptions.Item label="透明度">
+            <CopyableValue 
+              value={`${Math.round(selectedLayer.opacity * 100)}%`} 
+              copyValue={selectedLayer.opacity.toFixed(2)}
+            />
           </Descriptions.Item>
           {selectedLayer.blendMode && (
             <Descriptions.Item label="混合模式">

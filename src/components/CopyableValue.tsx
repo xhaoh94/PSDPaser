@@ -6,6 +6,8 @@ const { Text } = Typography;
 
 interface CopyableValueProps {
   value: string;
+  /** 复制时使用的值（可选，默认使用 value） */
+  copyValue?: string;
   mono?: boolean;
   ellipsis?: boolean;
   maxWidth?: number;
@@ -17,6 +19,7 @@ interface CopyableValueProps {
  */
 export const CopyableValue: React.FC<CopyableValueProps> = ({
   value,
+  copyValue,
   mono = true,
   ellipsis = false,
   maxWidth = 150,
@@ -25,7 +28,8 @@ export const CopyableValue: React.FC<CopyableValueProps> = ({
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(value);
+      // 优先使用 copyValue，否则使用 value
+      await navigator.clipboard.writeText(copyValue ?? value);
       setCopied(true);
       message.success('已复制到剪贴板');
       setTimeout(() => setCopied(false), 2000);
@@ -91,9 +95,16 @@ export const CopyableColor: React.FC<CopyableColorProps> = ({ color }) => {
 
   return (
     <span className="inline-flex items-center gap-2 group">
-      <div
-        className="w-5 h-5 rounded border border-gray-600"
-        style={{ backgroundColor: color }}
+      <span
+        style={{ 
+          backgroundColor: color,
+          width: '16px',
+          height: '16px',
+          borderRadius: '3px',
+          border: '1px solid #9ca3af',
+          display: 'inline-block',
+          flexShrink: 0,
+        }}
       />
       <Text className="font-mono text-sm">{color}</Text>
       <Tooltip title={copied ? '已复制' : '点击复制'}>

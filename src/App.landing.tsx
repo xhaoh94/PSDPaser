@@ -1,12 +1,11 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { ConfigProvider, theme, Layout, Spin, message, Button, Tooltip } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { 
   FolderOpenOutlined, 
-  FileOutlined,
-  ReloadOutlined
+  FileOutlined
 } from '@ant-design/icons';
-import { usePsdStore, useUiStore } from './stores';
+import { usePsdStore } from './stores';
 import { FileList } from './components/FileList';
 import { CanvasViewer } from './components/CanvasViewer';
 import { LayerTree } from './components/LayerTree';
@@ -20,45 +19,9 @@ const { Sider, Content } = Layout;
 
 function App() {
   const { setDocument, setLoading, setError, isLoading, document: psdDoc } = usePsdStore();
-  const { layerPanelHeight, setLayerPanelHeight } = useUiStore();
   const [selectedFile, setSelectedFile] = useState<PsdFile | null>(null);
   
-  const { selectDirectory, refreshDirectory } = useFileSystem();
-
-  // Resizer logic
-  const isResizingRef = useRef(false);
-  
-  const handleMouseDown = useCallback(() => {
-    isResizingRef.current = true;
-    document.body.style.cursor = 'row-resize';
-    document.body.style.userSelect = 'none';
-  }, []);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizingRef.current) return;
-      
-      const sidebarHeight = window.innerHeight - 48; // Subtract header height
-      const newHeight = sidebarHeight - (e.clientY - 48);
-      const percentage = (newHeight / sidebarHeight) * 100;
-      
-      setLayerPanelHeight(percentage);
-    };
-
-    const handleMouseUp = () => {
-      isResizingRef.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [setLayerPanelHeight]);
+  const { selectDirectory } = useFileSystem();
 
   // Force Light Mode
   useEffect(() => {
@@ -118,7 +81,7 @@ function App() {
         <Sider width={250} className="bg-white border-r border-border flex flex-col z-20 shadow-sm" theme="light">
           <div className="flex flex-col h-full">
             {/* App Title / Logo Area (Minimal) */}
-            <div className="h-12 flex items-center px-4 border-b border-border bg-gray-50/50 shrink-0">
+            <div className="h-12 flex items-center px-4 border-b border-border bg-gray-50/50">
               <div className="font-bold text-lg text-gray-800 tracking-tight flex items-center gap-2">
                 <span className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center text-white text-xs">P</span>
                 PSD 解析器
@@ -126,17 +89,12 @@ function App() {
             </div>
 
             {/* File Navigation */}
-            <div className="flex flex-col min-h-0" style={{ height: psdDoc ? `calc(${100 - layerPanelHeight}% - 6px)` : '100%' }}>
-              <div className="px-4 py-3 flex items-center justify-between shrink-0">
+            <div className="flex-1 flex flex-col min-h-0">
+              <div className="px-4 py-3 flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-500 uppercase">文件目录</span>
-                <div className="flex items-center gap-1">
-                  <Tooltip title="刷新目录">
-                    <Button type="text" size="small" icon={<ReloadOutlined />} onClick={refreshDirectory} className="text-gray-500 hover:bg-gray-100" />
-                  </Tooltip>
-                  <Tooltip title="打开新目录">
-                    <Button type="text" size="small" icon={<FolderOpenOutlined />} onClick={selectDirectory} className="text-blue-600 hover:bg-blue-50" />
-                  </Tooltip>
-                </div>
+                <Tooltip title="打开新目录">
+                  <Button type="text" size="small" icon={<FolderOpenOutlined />} onClick={selectDirectory} className="text-blue-600 hover:bg-blue-50" />
+                </Tooltip>
               </div>
               <div className="flex-1 overflow-hidden px-2">
                 <FileList onFileSelect={handleFileSelect} selectedFile={selectedFile} />
@@ -145,32 +103,14 @@ function App() {
 
             {/* Layer Tree (Bottom Half) */}
             {psdDoc && (
-              <>
-                {/* Resizer Handle - 拖拽分割线 */}
-                <div 
-                  className="shrink-0 cursor-row-resize select-none"
-                  style={{ 
-                    height: '8px', 
-                    background: 'linear-gradient(to bottom, #e5e7eb 0%, #d1d5db 50%, #e5e7eb 100%)',
-                    borderTop: '1px solid #d1d5db',
-                    borderBottom: '1px solid #d1d5db',
-                  }}
-                  onMouseDown={handleMouseDown}
-                >
-                  <div className="h-full w-full flex items-center justify-center">
-                    <div className="w-10 h-0.5 bg-gray-400 rounded-full" />
-                  </div>
+              <div className="h-1/2 flex flex-col min-h-0 border-t border-border">
+                <div className="px-4 h-10 flex items-center bg-gray-50/50 border-b border-border">
+                  <span className="text-xs font-bold text-gray-500 uppercase">图层结构</span>
                 </div>
-                
-                <div className="flex flex-col min-h-0 bg-white" style={{ height: `${layerPanelHeight}%` }}>
-                  <div className="px-4 h-10 flex items-center bg-gray-50/50 border-b border-border shrink-0">
-                    <span className="text-xs font-bold text-gray-500 uppercase">图层结构</span>
-                  </div>
-                  <div className="flex-1 overflow-hidden">
-                    <LayerTree />
-                  </div>
+                <div className="flex-1 overflow-hidden">
+                  <LayerTree />
                 </div>
-              </>
+              </div>
             )}
           </div>
         </Sider>
