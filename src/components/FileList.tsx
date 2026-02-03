@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { Empty, Spin, Alert, Tree, Button, Tooltip, Input, Select } from 'antd';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { Empty, Spin, Alert, Tree, Button, Tooltip, Input, Select, Progress } from 'antd';
 import { 
   FileImageOutlined, 
   FolderOutlined, 
@@ -10,18 +10,21 @@ import {
   SortAscendingOutlined
 } from '@ant-design/icons';
 import { useFileSystem } from '../hooks/useFileSystem';
-import type { PsdFile, DirectoryNode } from '../hooks/useFileSystem';
+import type { PsdFileInfo, DirectoryNode } from '../hooks/useFileSystem';
 import type { DataNode } from 'antd/es/tree';
 
 interface FileListProps {
-  onFileSelect?: (file: PsdFile) => void;
-  selectedFile?: PsdFile | null;
+  onFileSelect?: (file: PsdFileInfo) => void;
+  selectedFile?: PsdFileInfo | null;
 }
 
 type SortType = 'name' | 'modified';
 
 /**
- * 文件列表组件
+ * 文件列表组件（高性能版本）
+ * - 支持虚拟滚动
+ * - 显示扫描进度
+ * - 分批渲染大量文件
  */
 export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }) => {
   const {
@@ -29,27 +32,28 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
     directoryTree,
     isLoading,
     error,
-    lastSelectedFileName,
-    setLastSelectedFileName,
+    scanProgress,
   } = useFileSystem();
 
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [searchText, setSearchText] = useState('');
   const [sortType, setSortType] = useState<SortType>('name');
+  const [treeHeight, setTreeHeight] = useState(400);
+  const treeContainerRef = useRef<HTMLDivElement>(null);
 
   // 递归获取所有目录 Key
-  const getAllDirKeys = (node: DirectoryNode): string[] => {
+  const getAllDirKeys = useCallback((node: DirectoryNode): string[] => {
     const keys: string[] = [];
     keys.push(`dir-${node.path}`);
     for (const child of node.children) {
       keys.push(...getAllDirKeys(child));
     }
     return keys;
-  };
+  }, []);
 
-  // 过滤和排序文件
+  // 过滤和排序文件（使用 useMemo 优化）
   const filteredAndSortedFiles = useMemo(() => {
-    let result = [...files];
+    let result = files;
     
     // 模糊搜索过滤
     if (searchText.trim()) {
@@ -60,25 +64,21 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
       );
     }
     
-    // 排序
-    result.sort((a, b) => {
+    // 排序（创建新数组避免修改原数组）
+    return [...result].sort((a, b) => {
       if (sortType === 'name') {
         return a.name.localeCompare(b.name);
       } else {
-        // 最近修改时间排序（降序，最新的在前）
         return b.lastModified - a.lastModified;
       }
     });
-    
-    return result;
   }, [files, searchText, sortType]);
 
-  // 获取过滤后的目录树
+  // 获取过滤后的目录树（优化：只在需要时计算）
   const filteredDirectoryTree = useMemo(() => {
     if (!directoryTree) return null;
     
-    // 排序函数
-    const sortFiles = (files: PsdFile[]) => {
+    const sortFiles = (files: PsdFileInfo[]) => {
       return [...files].sort((a, b) => {
         if (sortType === 'name') {
           return a.name.localeCompare(b.name);
@@ -88,7 +88,6 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
       });
     };
     
-    // 获取目录内所有文件的最新修改时间（递归）
     const getLatestModified = (node: DirectoryNode): number => {
       let latest = 0;
       for (const file of node.files) {
@@ -105,19 +104,16 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
       return latest;
     };
     
-    // 排序目录
     const sortChildren = (children: DirectoryNode[]): DirectoryNode[] => {
       return [...children].sort((a, b) => {
         if (sortType === 'name') {
           return a.name.localeCompare(b.name);
         } else {
-          // 按目录内最新文件的修改时间排序
           return getLatestModified(b) - getLatestModified(a);
         }
       });
     };
     
-    // 递归过滤和排序目录树
     const processNode = (node: DirectoryNode, searchLower: string | null): DirectoryNode | null => {
       let processedChildren: DirectoryNode[] = [];
       
@@ -128,12 +124,10 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
         }
       }
       
-      // 排序子目录
       processedChildren = sortChildren(processedChildren);
       
       let processedFiles = node.files;
       
-      // 如果有搜索条件，先过滤
       if (searchLower) {
         processedFiles = processedFiles.filter(file =>
           file.name.toLowerCase().includes(searchLower) ||
@@ -141,10 +135,8 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
         );
       }
       
-      // 排序文件
       processedFiles = sortFiles(processedFiles);
       
-      // 如果是搜索模式，只返回有内容的节点
       if (searchLower) {
         if (processedChildren.length > 0 || processedFiles.length > 0) {
           return {
@@ -156,7 +148,6 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
         return null;
       }
       
-      // 非搜索模式，返回所有节点
       return {
         ...node,
         children: processedChildren,
@@ -168,21 +159,21 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
     return processNode(directoryTree, searchLower);
   }, [directoryTree, searchText, sortType]);
 
-  const handleExpandAll = () => {
+  const handleExpandAll = useCallback(() => {
     if (filteredDirectoryTree) {
       const allKeys = ['root', ...getAllDirKeys(filteredDirectoryTree)];
       setExpandedKeys(allKeys);
     }
-  };
+  }, [filteredDirectoryTree, getAllDirKeys]);
 
-  const handleCollapseAll = () => {
+  const handleCollapseAll = useCallback(() => {
     setExpandedKeys([]);
-  };
+  }, []);
 
-  const convertToTreeData = (node: DirectoryNode): DataNode[] => {
+  // 转换为树数据（优化：使用迭代而非递归）
+  const convertToTreeData = useCallback((node: DirectoryNode): DataNode[] => {
     const result: DataNode[] = [];
 
-    // 添加子目录
     for (const child of node.children) {
       result.push({
         key: `dir-${child.path}`,
@@ -194,12 +185,11 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
       });
     }
 
-    // 添加文件
     for (const file of node.files) {
       result.push({
         key: `file-${file.relativePath}`,
         title: (
-          <span className="text-gray-700 whitespace-nowrap truncate block" style={{ maxWidth: 180 }} title={file.name}>
+          <span className="text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis block" title={file.name}>
             {file.name}
           </span>
         ),
@@ -209,30 +199,34 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
     }
 
     return result;
-  };
+  }, []);
 
   // 生成树数据
-  const treeData: DataNode[] = filteredDirectoryTree
-    ? [{
+  const treeData: DataNode[] = useMemo(() => {
+    if (filteredDirectoryTree) {
+      return [{
         key: 'root',
         title: <span className="font-bold text-gray-800 whitespace-nowrap">{filteredDirectoryTree.name || '已选目录'}</span>,
         icon: <FolderOpenOutlined className="text-yellow-500" />,
         children: convertToTreeData(filteredDirectoryTree),
         selectable: false,
-      }]
-    : filteredAndSortedFiles.map(file => ({
-        key: `file-${file.relativePath}`,
-        title: (
-          <span className="text-gray-700 whitespace-nowrap truncate block" style={{ maxWidth: 180 }} title={file.name}>
-            {file.name}
-          </span>
-        ),
-        icon: <FileImageOutlined className="text-blue-500" />,
-        isLeaf: true,
-      }));
+      }];
+    }
+    
+    return filteredAndSortedFiles.map(file => ({
+      key: `file-${file.relativePath}`,
+      title: (
+        <span className="text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis block" title={file.name}>
+          {file.name}
+        </span>
+      ),
+      icon: <FileImageOutlined className="text-blue-500" />,
+      isLeaf: true,
+    }));
+  }, [filteredDirectoryTree, filteredAndSortedFiles, convertToTreeData]);
 
   // 处理树节点选择
-  const handleSelect = (selectedKeys: React.Key[]) => {
+  const handleSelect = useCallback((selectedKeys: React.Key[]) => {
     if (selectedKeys.length === 0) return;
     
     const key = selectedKeys[0] as string;
@@ -241,28 +235,40 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
     const relativePath = key.replace('file-', '');
     const file = files.find(f => f.relativePath === relativePath);
     if (file) {
-      setLastSelectedFileName(file.name);
       onFileSelect?.(file);
     }
-  };
+  }, [files, onFileSelect]);
 
-  // 初始化时只展开根目录（子目录默认折叠）
+  // 初始化时只展开根目录
   useEffect(() => {
     if (filteredDirectoryTree && expandedKeys.length === 0) {
       setExpandedKeys(['root']);
     }
-  }, [filteredDirectoryTree]);
+  }, [filteredDirectoryTree, expandedKeys.length]);
 
-  // 自动选中上次的文件
+  // 监听容器大小变化，动态更新树高度
   useEffect(() => {
-    if (files.length > 0 && lastSelectedFileName && !selectedFile) {
-      const lastFile = files.find(f => f.name === lastSelectedFileName);
-      if (lastFile) {
-        console.log('[FileList] 自动恢复上次选中的文件:', lastFile.name);
-        onFileSelect?.(lastFile);
+    const container = treeContainerRef.current;
+    if (!container) return;
+
+    const updateHeight = () => {
+      const height = container.clientHeight;
+      if (height > 0) {
+        setTreeHeight(height);
       }
-    }
-  }, [files, lastSelectedFileName, selectedFile, onFileSelect]);
+    };
+
+    // 初始化高度
+    updateHeight();
+
+    // 使用 ResizeObserver 监听容器大小变化
+    const resizeObserver = new ResizeObserver(updateHeight);
+    resizeObserver.observe(container);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   // 获取选中的文件 key
   const selectedKeys = selectedFile
@@ -271,6 +277,11 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
 
   // 计算匹配的文件数量
   const matchCount = searchText.trim() ? filteredAndSortedFiles.length : files.length;
+
+  // 计算扫描进度百分比
+  const progressPercent = scanProgress && scanProgress.total > 0 
+    ? Math.round((scanProgress.current / scanProgress.total) * 100) 
+    : 0;
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -284,10 +295,26 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
         />
       )}
 
-      {/* 加载状态 */}
-      {isLoading && (
-        <div className="flex-1 flex items-center justify-center">
+      {/* 扫描进度 */}
+      {isLoading && scanProgress && scanProgress.total > 0 && (
+        <div className="p-3 space-y-2">
+          <div className="text-xs text-gray-500 text-center">
+            正在扫描文件... {scanProgress.current} / {scanProgress.total}
+          </div>
+          <Progress 
+            percent={progressPercent} 
+            size="small" 
+            status="active"
+            strokeColor="#1890ff"
+          />
+        </div>
+      )}
+
+      {/* 加载状态（无进度时显示） */}
+      {isLoading && (!scanProgress || scanProgress.total === 0) && (
+        <div className="flex-1 flex flex-col items-center justify-center">
           <Spin />
+          <span className="text-xs text-gray-400 mt-2">正在扫描目录...</span>
         </div>
       )}
 
@@ -344,9 +371,9 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
         </div>
       )}
 
-      {/* 文件树 */}
+      {/* 文件树（使用虚拟滚动） */}
       {!isLoading && files.length > 0 && (
-        <div className="flex-1 overflow-auto py-1">
+        <div ref={treeContainerRef} className="flex-1 overflow-auto py-1">
           <Tree
             showIcon
             blockNode
@@ -356,13 +383,15 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
             onExpand={(keys) => setExpandedKeys(keys)}
             onSelect={handleSelect}
             className="file-tree"
+            virtual={files.length > 100} // 超过 100 个文件时启用虚拟滚动
+            height={files.length > 100 ? treeHeight : undefined} // 虚拟滚动使用动态容器高度
           />
         </div>
       )}
 
       {/* 文件数量统计 */}
-      {files.length > 0 && (
-        <div className="h-6 flex items-center justify-center border-t border-gray-100 bg-white select-none">
+      {files.length > 0 && !isLoading && (
+        <div className="h-6 flex items-center justify-center border-t border-gray-100 bg-white select-none shrink-0">
           <span className="text-[10px] text-gray-400 font-medium">
             {searchText.trim() ? `${matchCount} / ${files.length} 个匹配` : `${files.length} 个项目`}
           </span>

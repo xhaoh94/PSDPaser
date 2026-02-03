@@ -19,10 +19,14 @@ interface UiState {
   
   // 图层面板高度百分比 (0-100)
   layerPanelHeight: number;
+  
+  // 左侧栏宽度 (px)
+  leftSiderWidth: number;
 
   // Actions
   setCursorPosition: (position: { x: number; y: number }) => void;
   setLayerPanelHeight: (height: number) => void;
+  setLeftSiderWidth: (width: number) => void;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
   setScale: (scale: number) => void;
@@ -52,9 +56,11 @@ export const useUiStore = create<UiState>()(
       rightPanelCollapsed: false,
       cursorPosition: { x: 0, y: 0 },
       layerPanelHeight: 50, // 默认 50%
+      leftSiderWidth: 280, // 默认左侧栏宽度
       
       setCursorPosition: (position) => set({ cursorPosition: position }),
       setLayerPanelHeight: (height) => set({ layerPanelHeight: Math.max(10, Math.min(90, height)) }), // 限制在 10% - 90% 之间
+      setLeftSiderWidth: (width) => set({ leftSiderWidth: Math.max(180, Math.min(500, width)) }), // 限制在 180px - 500px 之间
       setTheme: (theme) => set({ theme }),
       toggleTheme: () => set(state => ({
         theme: state.theme === 'dark' ? 'light' : 'dark'
@@ -110,6 +116,7 @@ toggleRightPanel: () => set(state => ({
         partialize: (state) => ({
           theme: state.theme, // 只持久化主题
           layerPanelHeight: state.layerPanelHeight, // 持久化面板高度
+          leftSiderWidth: state.leftSiderWidth, // 持久化左侧栏宽度
         }),
       }
   )

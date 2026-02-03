@@ -64,6 +64,14 @@ export interface LayerEffects {
   }[];
 }
 
+// 图层遮罩
+export interface LayerMask {
+  canvas?: HTMLCanvasElement;
+  bounds: LayerBounds;
+  disabled?: boolean;
+  defaultColor?: number; // 0 = 透明, 255 = 白色
+}
+
 // 图层
 export interface PsdLayer {
   id: string;
@@ -78,6 +86,7 @@ export interface PsdLayer {
   imageInfo?: ImageLayerInfo; // 仅 image 类型有
   effects?: LayerEffects;
   canvas?: HTMLCanvasElement; // 图层的渲染结果
+  mask?: LayerMask; // 图层遮罩
 }
 
 // 主题类型

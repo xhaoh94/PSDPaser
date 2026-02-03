@@ -8,6 +8,7 @@ import type {
   ImageLayerInfo,
   LayerEffects,
 } from '../types/psd';
+import { psdWorkerManager } from './psdWorkerManager';
 
 /**
  * RGB 颜色转 HEX
@@ -66,6 +67,7 @@ function generateLayerId(): string {
 
 /**
  * 判断图层类型
+ * 注意：shape 类型统一当成 image 处理
  */
 function getLayerType(layer: Layer): LayerType {
   if (layer.text) {
@@ -77,8 +79,9 @@ function getLayerType(layer: Layer): LayerType {
   if (layer.placedLayer) {
     return 'image'; // 智能对象
   }
+  // shape 类型（vectorMask/vectorFill/vectorStroke）统一当成 image 处理
   if (layer.vectorMask || layer.vectorFill || layer.vectorStroke) {
-    return 'shape';
+    return 'image';
   }
   if (layer.adjustment) {
     return 'adjustment';
@@ -201,6 +204,14 @@ function extractEffects(layer: Layer): LayerEffects | undefined {
 function convertLayer(layer: Layer, psd: Psd): PsdLayer {
   const type = getLayerType(layer);
 
+  // ag-psd 返回的 opacity 范围是 0-1
+  // 但文档说明不一致，实际可能是 0-255，需要归一化处理
+  let opacity = layer.opacity ?? 1;
+  if (opacity > 1) {
+    // 如果值大于 1，说明是 0-255 范围，归一化到 0-1
+    opacity = opacity / 255;
+  }
+
   const result: PsdLayer = {
     id: generateLayerId(),
     name: layer.name || 'Unnamed Layer',
@@ -212,11 +223,26 @@ function convertLayer(layer: Layer, psd: Psd): PsdLayer {
       right: layer.right ?? 0,
     },
     visible: !layer.hidden,
-    opacity: layer.opacity ?? 1,
+    opacity,
     blendMode: layer.blendMode,
     canvas: layer.canvas,
     effects: extractEffects(layer),
   };
+
+  // 提取遮罩信息
+  if (layer.mask && !layer.mask.disabled && layer.mask.canvas) {
+    result.mask = {
+      canvas: layer.mask.canvas,
+      bounds: {
+        top: layer.mask.top ?? 0,
+        left: layer.mask.left ?? 0,
+        bottom: layer.mask.bottom ?? 0,
+        right: layer.mask.right ?? 0,
+      },
+      disabled: layer.mask.disabled,
+      defaultColor: layer.mask.defaultColor,
+    };
+  }
 
   // 添加类型特定信息
   if (type === 'text') {
@@ -280,4 +306,26 @@ export function checkFileSizeWarning(size: number): string | null {
     return `文件较大 (${mb.toFixed(1)} MB)，可能需要稍等片刻`;
   }
   return null;
+}
+
+/**
+ * 从 File 对象异步解析 PSD (使用 Web Worker)
+ * 大文件推荐使用此方法，不会阻塞 UI
+ */
+export async function parsePsdFromFileAsync(
+  file: File,
+  onProgress?: (progress: number) => void
+): Promise<PsdDocument> {
+  if (!psdWorkerManager) {
+    // Fallback 到同步方法
+    return parsePsdFromFile(file);
+  }
+  return psdWorkerManager.parsePsdFromFile(file, onProgress);
+}
+
+/**
+ * 检查是否支持 Worker 异步解析
+ */
+export function isAsyncParsingSupported(): boolean {
+  return typeof Worker !== 'undefined';
 }

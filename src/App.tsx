@@ -6,47 +6,66 @@ import {
   FileOutlined,
   ReloadOutlined
 } from '@ant-design/icons';
-import { usePsdStore, useUiStore } from './stores';
+import { usePsdStore, useUiStore, useSelectionStore } from './stores';
 import { FileList } from './components/FileList';
 import { CanvasViewer } from './components/CanvasViewer';
 import { LayerTree } from './components/LayerTree';
 import { PropertiesPanel } from './components/PropertiesPanel';
-import { parsePsdFromFile, checkFileSizeWarning } from './utils/psdParser';
+import { parsePsdFromFileAsync, checkFileSizeWarning, isAsyncParsingSupported, parsePsdFromFile } from './utils/psdParser';
+import { psdCache } from './utils/psdCache';
 import { useFileSystem } from './hooks/useFileSystem';
-import type { PsdFile } from './hooks/useFileSystem';
+import type { PsdFileInfo } from './hooks/useFileSystem';
 import './App.css';
 
 const { Sider, Content } = Layout;
 
 function App() {
   const { setDocument, setLoading, setError, isLoading, document: psdDoc } = usePsdStore();
-  const { layerPanelHeight, setLayerPanelHeight } = useUiStore();
-  const [selectedFile, setSelectedFile] = useState<PsdFile | null>(null);
+  const { layerPanelHeight, setLayerPanelHeight, leftSiderWidth, setLeftSiderWidth } = useUiStore();
+  const { clearSelection } = useSelectionStore();
+  const [selectedFile, setSelectedFile] = useState<PsdFileInfo | null>(null);
+  const [parseProgress, setParseProgress] = useState<number>(0);
   
-  const { selectDirectory, refreshDirectory } = useFileSystem();
+  const { selectDirectory, refreshDirectory, getFile } = useFileSystem();
 
-  // Resizer logic
-  const isResizingRef = useRef(false);
+  // 垂直 Resizer (图层面板高度)
+  const isResizingVerticalRef = useRef(false);
+  // 水平 Resizer (左侧栏宽度)
+  const isResizingHorizontalRef = useRef(false);
+  const siderRef = useRef<HTMLDivElement>(null);
   
-  const handleMouseDown = useCallback(() => {
-    isResizingRef.current = true;
+  const handleVerticalMouseDown = useCallback(() => {
+    isResizingVerticalRef.current = true;
     document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  const handleHorizontalMouseDown = useCallback(() => {
+    isResizingHorizontalRef.current = true;
+    document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
   }, []);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizingRef.current) return;
+      // 垂直拖拽（图层面板高度）
+      if (isResizingVerticalRef.current) {
+        const sidebarHeight = window.innerHeight - 48;
+        const newHeight = sidebarHeight - (e.clientY - 48);
+        const percentage = (newHeight / sidebarHeight) * 100;
+        setLayerPanelHeight(percentage);
+      }
       
-      const sidebarHeight = window.innerHeight - 48; // Subtract header height
-      const newHeight = sidebarHeight - (e.clientY - 48);
-      const percentage = (newHeight / sidebarHeight) * 100;
-      
-      setLayerPanelHeight(percentage);
+      // 水平拖拽（左侧栏宽度）
+      if (isResizingHorizontalRef.current) {
+        const newWidth = e.clientX;
+        setLeftSiderWidth(newWidth);
+      }
     };
 
     const handleMouseUp = () => {
-      isResizingRef.current = false;
+      isResizingVerticalRef.current = false;
+      isResizingHorizontalRef.current = false;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
@@ -58,23 +77,62 @@ function App() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [setLayerPanelHeight]);
+  }, [setLayerPanelHeight, setLeftSiderWidth]);
 
   // Force Light Mode
   useEffect(() => {
     document.documentElement.classList.remove('dark');
   }, []);
 
-  const handleFileSelect = async (file: PsdFile) => {
-    setSelectedFile(file);
-    const warning = checkFileSizeWarning(file.size);
+  // 懒加载 PSD 文件（带 LRU 缓存）
+  // 大文件使用 Web Worker 异步解析，避免 UI 卡顿
+  const handleFileSelect = useCallback(async (fileInfo: PsdFileInfo) => {
+    // 清除上一个文件的选中状态
+    clearSelection();
+    setSelectedFile(fileInfo);
+    setParseProgress(0);
+    
+    // 检查缓存
+    const cacheKey = fileInfo.relativePath;
+    const cachedDoc = psdCache.get(cacheKey);
+    
+    if (cachedDoc) {
+      console.log(`[App] 从缓存加载: ${fileInfo.name}`);
+      setDocument(cachedDoc, fileInfo.name);
+      return;
+    }
+    
+    // 文件大小警告
+    const warning = checkFileSizeWarning(fileInfo.size);
     if (warning) message.warning(warning);
 
     setLoading(true);
     try {
-      const doc = await parsePsdFromFile(file.file);
-      setDocument(doc, file.name);
-      message.success({ content: `已加载 ${file.name}`, key: 'loading' });
+      // 懒加载获取 File 对象
+      const file = await getFile(fileInfo.relativePath);
+      if (!file) {
+        throw new Error('无法获取文件');
+      }
+      
+      // 大文件 (>50MB) 使用 Worker 异步解析
+      const useWorker = isAsyncParsingSupported() && file.size > 50 * 1024 * 1024;
+      
+      let doc;
+      if (useWorker) {
+        console.log(`[App] 使用 Worker 异步解析大文件: ${fileInfo.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
+        doc = await parsePsdFromFileAsync(file, (progress) => {
+          setParseProgress(Math.round(progress));
+        });
+      } else {
+        doc = await parsePsdFromFile(file);
+      }
+      
+      // 存入缓存
+      psdCache.set(cacheKey, doc);
+      
+      setDocument(doc, fileInfo.name);
+      setParseProgress(100);
+      message.success({ content: `已加载 ${fileInfo.name}`, key: 'loading' });
     } catch (err) {
       console.error(err);
       const errorMsg = (err as Error).message || '解析失败';
@@ -82,8 +140,9 @@ function App() {
       message.error(errorMsg);
     } finally {
       setLoading(false);
+      setParseProgress(0);
     }
-  };
+  }, [getFile, setDocument, setError, setLoading, clearSelection]);
 
   const lightToken = {
     colorBgBase: '#ffffff',
@@ -93,7 +152,7 @@ function App() {
     colorTextSecondary: '#666666',
     colorPrimary: '#1890ff',
     borderRadius: 4,
-    fontFamily: 'Inter, sans-serif',
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif",
   };
 
   return (
@@ -113,9 +172,13 @@ function App() {
         }
       }}
     >
-      <Layout className="h-screen overflow-hidden bg-bg-app font-sans text-text-main">
+      <Layout className="h-screen overflow-hidden bg-bg-app font-sans text-text-main flex-row">
         {/* Left Sidebar - Navigation & Layers */}
-        <Sider width={250} className="bg-white border-r border-border flex flex-col z-20 shadow-sm" theme="light">
+        <div 
+          ref={siderRef}
+          className="bg-white border-r border-border flex flex-col z-20 shadow-sm shrink-0"
+          style={{ width: leftSiderWidth }}
+        >
           <div className="flex flex-col h-full">
             {/* App Title / Logo Area (Minimal) */}
             <div className="h-12 flex items-center px-4 border-b border-border bg-gray-50/50 shrink-0">
@@ -146,7 +209,7 @@ function App() {
             {/* Layer Tree (Bottom Half) */}
             {psdDoc && (
               <>
-                {/* Resizer Handle - 拖拽分割线 */}
+                {/* Vertical Resizer Handle - 图层面板拖拽分割线 */}
                 <div 
                   className="shrink-0 cursor-row-resize select-none"
                   style={{ 
@@ -155,7 +218,7 @@ function App() {
                     borderTop: '1px solid #d1d5db',
                     borderBottom: '1px solid #d1d5db',
                   }}
-                  onMouseDown={handleMouseDown}
+                  onMouseDown={handleVerticalMouseDown}
                 >
                   <div className="h-full w-full flex items-center justify-center">
                     <div className="w-10 h-0.5 bg-gray-400 rounded-full" />
@@ -173,14 +236,36 @@ function App() {
               </>
             )}
           </div>
-        </Sider>
+        </div>
+        
+        {/* Horizontal Resizer - 左侧栏与画布之间的拖拽条 */}
+        <div
+          className="shrink-0 cursor-col-resize select-none hover:bg-blue-400 transition-colors z-30 flex items-center justify-center"
+          style={{ 
+            width: '6px',
+            background: 'linear-gradient(to right, #e5e7eb 0%, #d1d5db 50%, #e5e7eb 100%)',
+          }}
+          onMouseDown={handleHorizontalMouseDown}
+        >
+          <div className="w-0.5 h-10 bg-gray-400 rounded-full" />
+        </div>
 
         {/* Main Content - Canvas */}
         <Content className="relative bg-gray-100 flex flex-col overflow-hidden">
           {isLoading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-50">
               <Spin size="large" />
-              <span className="mt-4 text-xs text-gray-500">正在解析...</span>
+              <span className="mt-4 text-xs text-gray-500">
+                {parseProgress > 0 ? `正在解析... ${parseProgress}%` : '正在解析...'}
+              </span>
+              {parseProgress > 0 && (
+                <div className="mt-2 w-48 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-blue-500 transition-all duration-200 ease-out"
+                    style={{ width: `${parseProgress}%` }}
+                  />
+                </div>
+              )}
             </div>
           )}
 

@@ -40,11 +40,6 @@ const TextProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
         <Descriptions.Item label="颜色">
           <CopyableColor color={textInfo.color} />
         </Descriptions.Item>
-        {textInfo.strokeColor && (
-          <Descriptions.Item label="描边色">
-            <CopyableColor color={textInfo.strokeColor} />
-          </Descriptions.Item>
-        )}
         {textInfo.lineHeight && (
           <Descriptions.Item label="行高">
             <CopyableValue value={`${textInfo.lineHeight}px`} />
@@ -92,11 +87,6 @@ const ImageProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
         <Descriptions.Item label="资源名称">
           <CopyableValue value={imageInfo.name} ellipsis maxWidth={150} />
         </Descriptions.Item>
-        {imageInfo.linkedFileName && (
-          <Descriptions.Item label="链接文件">
-            <CopyableValue value={imageInfo.linkedFileName} ellipsis maxWidth={150} />
-          </Descriptions.Item>
-        )}
         {imageInfo.originalWidth && imageInfo.originalHeight && (
           <Descriptions.Item label="原始尺寸">
             <CopyableValue value={`${imageInfo.originalWidth} x ${imageInfo.originalHeight}`} />

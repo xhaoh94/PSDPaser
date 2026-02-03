@@ -1,43 +1,64 @@
 import { create } from 'zustand';
 
-export interface PsdFile {
+/**
+ * 轻量级文件信息（不包含 File 对象，只存元数据）
+ */
+export interface PsdFileInfo {
   name: string;
   size: number;
-  file: File;
   lastModified: number;
   relativePath: string;
+}
+
+/**
+ * 文件句柄引用（用于懒加载时获取真实 File）
+ */
+export interface PsdFileHandle {
+  info: PsdFileInfo;
+  // 文件句柄（用于 File System Access API）
+  fileHandle?: FileSystemFileHandle;
+  // 传统模式下的 File 对象引用
+  file?: File;
 }
 
 export interface DirectoryNode {
   name: string;
   path: string;
-  files: PsdFile[];
+  files: PsdFileInfo[];
   children: DirectoryNode[];
 }
 
 interface FileSystemState {
-  files: PsdFile[];
+  // 轻量级文件信息列表（只有元数据）
+  files: PsdFileInfo[];
+  // 文件句柄映射（relativePath -> handle）
+  fileHandles: Map<string, PsdFileHandle>;
   directoryTree: DirectoryNode | null;
   isLoading: boolean;
   error: string | null;
   rootDirName: string;
-  lastSelectedFileName: string | null;
+  // 当前目录句柄（用于刷新）
+  currentDirHandle: FileSystemDirectoryHandle | null;
+  // 扫描进度
+  scanProgress: { current: number; total: number } | null;
   
   // Actions
-  setFiles: (files: PsdFile[]) => void;
+  setFiles: (files: PsdFileInfo[], handles: Map<string, PsdFileHandle>) => void;
   setDirectoryTree: (tree: DirectoryNode | null) => void;
   setIsLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setRootDirName: (name: string) => void;
-  setLastSelectedFileName: (name: string | null) => void;
+  setCurrentDirHandle: (handle: FileSystemDirectoryHandle | null) => void;
+  setScanProgress: (progress: { current: number; total: number } | null) => void;
   clearFiles: () => void;
+  // 获取文件 File 对象（懒加载）
+  getFile: (relativePath: string) => Promise<File | null>;
 }
 
 // IndexedDB 存储目录句柄
 const DB_NAME = 'PsdParserDB';
 const STORE_NAME = 'directoryHandles';
 const HANDLE_KEY = 'lastDirectoryHandle';
-const LAST_FILE_KEY = 'lastSelectedFile';
 
 export async function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -79,20 +100,8 @@ export async function loadDirectoryHandle(): Promise<FileSystemDirectoryHandle |
   }
 }
 
-export function saveLastFileName(name: string | null): void {
-  if (name) {
-    localStorage.setItem(LAST_FILE_KEY, name);
-  } else {
-    localStorage.removeItem(LAST_FILE_KEY);
-  }
-}
-
-export function loadLastFileName(): string | null {
-  return localStorage.getItem(LAST_FILE_KEY);
-}
-
-// 构建目录树
-export function buildDirectoryTree(files: PsdFile[], rootName: string): DirectoryNode {
+// 构建目录树（使用轻量级 PsdFileInfo）
+export function buildDirectoryTree(files: PsdFileInfo[], rootName: string): DirectoryNode {
   const root: DirectoryNode = {
     name: rootName,
     path: '',
@@ -132,22 +141,56 @@ export function buildDirectoryTree(files: PsdFile[], rootName: string): Director
   return root;
 }
 
-export const useFileSystemStore = create<FileSystemState>((set) => ({
+export const useFileSystemStore = create<FileSystemState>((set, get) => ({
   files: [],
+  fileHandles: new Map(),
   directoryTree: null,
   isLoading: false,
   error: null,
   rootDirName: '',
-  lastSelectedFileName: loadLastFileName(),
+  currentDirHandle: null,
+  scanProgress: null,
   
-  setFiles: (files) => set({ files }),
+  setFiles: (files, handles) => set({ files, fileHandles: handles }),
   setDirectoryTree: (tree) => set({ directoryTree: tree }),
   setIsLoading: (loading) => set({ isLoading: loading }),
   setError: (error) => set({ error }),
   setRootDirName: (name) => set({ rootDirName: name }),
-  setLastSelectedFileName: (name) => {
-    saveLastFileName(name);
-    set({ lastSelectedFileName: name });
+  setCurrentDirHandle: (handle) => set({ currentDirHandle: handle }),
+  setScanProgress: (progress) => set({ scanProgress: progress }),
+  clearFiles: () => set({ 
+    files: [], 
+    fileHandles: new Map(),
+    directoryTree: null, 
+    error: null, 
+    rootDirName: '',
+    currentDirHandle: null,
+    scanProgress: null,
+  }),
+  
+  // 懒加载获取 File 对象
+  getFile: async (relativePath: string): Promise<File | null> => {
+    const handle = get().fileHandles.get(relativePath);
+    if (!handle) return null;
+    
+    // 如果有缓存的 File 对象，直接返回
+    if (handle.file) {
+      return handle.file;
+    }
+    
+    // 使用 FileSystemFileHandle 获取 File
+    if (handle.fileHandle) {
+      try {
+        const file = await handle.fileHandle.getFile();
+        // 更新缓存（注意：这里不会触发重新渲染，只是内存缓存）
+        handle.file = file;
+        return file;
+      } catch (err) {
+        console.error('[FileSystem] 获取文件失败:', err);
+        return null;
+      }
+    }
+    
+    return null;
   },
-  clearFiles: () => set({ files: [], directoryTree: null, error: null, rootDirName: '' }),
 }));
