@@ -8,6 +8,8 @@ import {
   type PsdFileHandle,
   type DirectoryNode
 } from '../stores/fileSystemStore';
+import { useConfigStore } from '../stores/configStore';
+import { psdCache } from '../utils/psdCache';
 
 interface UseFileSystemReturn {
   files: PsdFileInfo[];
@@ -42,9 +44,10 @@ function yieldToMain(): Promise<void> {
 async function scanFilesFromHandle(
   dirHandle: FileSystemDirectoryHandle,
   onProgress?: (current: number, total: number) => void
-): Promise<{ files: PsdFileInfo[]; handles: Map<string, PsdFileHandle> }> {
+): Promise<{ files: PsdFileInfo[]; handles: Map<string, PsdFileHandle>; hasConfigFile: boolean }> {
   const files: PsdFileInfo[] = [];
   const handles = new Map<string, PsdFileHandle>();
+  let hasConfigFile = false;
   
   // 第一阶段：快速收集所有 PSD 文件句柄（不获取 File 对象）
   const pendingFiles: Array<{ fileHandle: FileSystemFileHandle; relativePath: string; name: string }> = [];
@@ -68,13 +71,19 @@ async function scanFilesFromHandle(
         if (entry.kind === 'directory') {
           const subPath = path ? `${path}/${entry.name}` : entry.name;
           queue.push({ handle: entry as FileSystemDirectoryHandle, path: subPath });
-        } else if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.psd')) {
-          const relativePath = path ? `${path}/${entry.name}` : entry.name;
-          pendingFiles.push({
-            fileHandle: entry as FileSystemFileHandle,
-            relativePath,
-            name: entry.name,
-          });
+        } else if (entry.kind === 'file') {
+          const lowerName = entry.name.toLowerCase();
+          
+          if (lowerName.endsWith('.psd')) {
+            const relativePath = path ? `${path}/${entry.name}` : entry.name;
+            pendingFiles.push({
+              fileHandle: entry as FileSystemFileHandle,
+              relativePath,
+              name: entry.name,
+            });
+          } else if (lowerName === 'fgui.json' || lowerName === 'fgui-config.json') {
+            hasConfigFile = true;
+          }
         }
       }
     } catch (err) {
@@ -116,7 +125,7 @@ async function scanFilesFromHandle(
     await yieldToMain();
   }
   
-  return { files, handles };
+  return { files, handles, hasConfigFile };
 }
 
 /**
@@ -145,6 +154,7 @@ function scanFilesFromInput(fileList: File[]): { files: PsdFileInfo[]; handles: 
 
 export function useFileSystem(): UseFileSystemReturn {
   const store = useFileSystemStore();
+  const { setHasLocalConfigFile } = useConfigStore();
   const supportsDirectoryPicker = 'showDirectoryPicker' in window;
 
   // 更新目录树 when files or rootDirName change
@@ -209,15 +219,15 @@ export function useFileSystem(): UseFileSystemReturn {
   // 使用 File System Access API 选择目录
   const selectDirectoryWithAPI = async (
     onProgress?: (current: number, total: number) => void
-  ): Promise<{ files: PsdFileInfo[]; handles: Map<string, PsdFileHandle>; rootName: string; dirHandle: FileSystemDirectoryHandle } | null> => {
+  ): Promise<{ files: PsdFileInfo[]; handles: Map<string, PsdFileHandle>; rootName: string; dirHandle: FileSystemDirectoryHandle; hasConfigFile: boolean } | null> => {
     try {
       // @ts-expect-error showDirectoryPicker is not in all TypeScript definitions
       const dirHandle = await window.showDirectoryPicker();
       
       await saveDirectoryHandle(dirHandle);
       
-      const { files, handles } = await scanFilesFromHandle(dirHandle, onProgress);
-      return { files, handles, rootName: dirHandle.name, dirHandle };
+      const { files, handles, hasConfigFile } = await scanFilesFromHandle(dirHandle, onProgress);
+      return { files, handles, rootName: dirHandle.name, dirHandle, hasConfigFile };
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
         return null;
@@ -291,6 +301,11 @@ export function useFileSystem(): UseFileSystemReturn {
         if ('dirHandle' in result && result.dirHandle) {
           store.setCurrentDirHandle(result.dirHandle as FileSystemDirectoryHandle);
         }
+        
+        // 更新配置文件状态
+        if ('hasConfigFile' in result) {
+          setHasLocalConfigFile(!!result.hasConfigFile);
+        }
       }
     } catch (err) {
       store.setError((err as Error).message || '选择目录失败');
@@ -354,6 +369,8 @@ export function useFileSystem(): UseFileSystemReturn {
 
   // 刷新当前目录
   const refreshDirectory = useCallback(async () => {
+    // 刷新时清空缓存
+    psdCache.clear();
     const currentHandle = store.currentDirHandle;
     
     if (!currentHandle) {
@@ -378,13 +395,14 @@ export function useFileSystem(): UseFileSystemReturn {
         store.setError(null);
         store.setScanProgress({ current: 0, total: 0 });
         
-        const { files, handles } = await scanFilesFromHandle(handle, (current, total) => {
+        const { files, handles, hasConfigFile } = await scanFilesFromHandle(handle, (current, total) => {
           store.setScanProgress({ current, total });
         });
         
         store.setScanProgress(null);
         store.setFiles(files, handles);
         store.setRootDirName(handle.name);
+        setHasLocalConfigFile(hasConfigFile);
         
         console.log('[FileSystem] 已刷新目录，找到', files.length, '个 PSD 文件');
       } catch (err) {
@@ -401,13 +419,14 @@ export function useFileSystem(): UseFileSystemReturn {
       store.setError(null);
       store.setScanProgress({ current: 0, total: 0 });
       
-      const { files, handles } = await scanFilesFromHandle(currentHandle, (current, total) => {
+      const { files, handles, hasConfigFile } = await scanFilesFromHandle(currentHandle, (current, total) => {
         store.setScanProgress({ current, total });
       });
       
       store.setScanProgress(null);
       store.setFiles(files, handles);
       store.setRootDirName(currentHandle.name);
+      setHasLocalConfigFile(hasConfigFile);
       
       console.log('[FileSystem] 已刷新目录，找到', files.length, '个 PSD 文件');
     } catch (err) {

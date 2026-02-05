@@ -142,8 +142,21 @@ class PsdWorkerManager {
     canvas.width = payload.width;
     canvas.height = payload.height;
     
+    // 确保 Canvas 不会因为大小为 0 而导致问题
+    if (payload.width === 0 || payload.height === 0) {
+        return canvas;
+    }
+
     const ctx = canvas.getContext('2d');
     if (ctx) {
+      // 预乘 Alpha 问题？ag-psd 返回的数据通常是非预乘的 RGBA
+      // 但是 ImageData 期望的是 RGBA。
+      // 检查数据长度是否匹配
+      const expectedLen = payload.width * payload.height * 4;
+      if (payload.data.byteLength !== expectedLen) {
+         console.warn(`[WorkerManager] Canvas 数据长度不匹配: 期望 ${expectedLen}, 实际 ${payload.data.byteLength}`);
+      }
+      
       const imageData = new ImageData(
         new Uint8ClampedArray(payload.data),
         payload.width,

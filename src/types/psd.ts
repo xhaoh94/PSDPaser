@@ -2,6 +2,7 @@
 export interface PsdDocument {
   width: number;
   height: number;
+  resolution?: number; // DPI
   layers: PsdLayer[];
   canvas?: HTMLCanvasElement; // 合成后的完整画布
 }
@@ -17,12 +18,20 @@ export interface LayerBounds {
   right: number;
 }
 
+export interface TextStyleRun {
+  text: string;
+  color: string;
+  fontSize?: number;
+  fontFamily?: string;
+}
+
 // 文本图层信息
 export interface TextLayerInfo {
   text: string;
   fontFamily: string;
   fontSize: number;
   color: string; // HEX 格式 如 #FF5733
+  styleRuns?: TextStyleRun[]; // 富文本样式片段
   strokeColor?: string;
   strokeWidth?: number;
   lineHeight?: number;
@@ -31,6 +40,9 @@ export interface TextLayerInfo {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  transform?: number[]; // [xx, xy, yx, yy, tx, ty]
+  textShape?: 'point' | 'box';
+  boxBounds?: number[]; // [top, left, bottom, right]
 }
 
 // 图片/智能对象图层信息
@@ -61,6 +73,17 @@ export interface LayerEffects {
     angle: number;
     distance: number;
     blur: number;
+  }[];
+  gradientOverlay?: {
+    opacity: number;
+    angle: number;
+    scale: number;
+    blendMode?: string;
+    gradient: {
+      type: 'solid' | 'noise';
+      colorStops: { color: string; location: number }[];
+      opacityStops: { opacity: number; location: number }[];
+    };
   }[];
 }
 

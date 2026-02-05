@@ -1,0 +1,22 @@
+{
+  "enabled": true,
+  "fguiProjectDir": "C:\\Project\\UxGame\\Unity\\FGUIProject",
+  "namingRules": {
+    "prefixes": {
+      "common": "Common@"
+    },
+    "suffixes": {
+      "noExport": "@NoExport",
+      "img": "@img",
+      "input": "@txt",
+      "rich": "@rich"
+    },
+    "componentPrefix": {
+      "Com": { "type": "Component", "prefix": "com" },
+      "Btn": { "type": "Button", "prefix": "btn" },
+      "ChkBtn": { "type": "Button", "prefix": "chk" },
+      "Bar": { "type": "ProgressBar", "prefix": "bar" },
+      "Cbo": { "type": "ComboBox", "prefix": "cbo" }
+    }
+  }
+}

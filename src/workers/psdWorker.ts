@@ -40,6 +40,7 @@ function parsePsdFull(buffer: ArrayBuffer) {
     skipLayerImageData: false,
     skipCompositeImageData: false,
     skipThumbnail: true,
+    applyEffects: true, // 开启图层效果应用
   });
   
   // 使用 as unknown as 绕过类型检查 (Psd 类型与 Record<string, unknown> 不兼容)
@@ -165,11 +166,17 @@ function convertLayerWithImage(layer: Record<string, unknown>, psd: Record<strin
   
   // 如果有 canvas，转换为 ImageData
   // 在 Worker 中，canvas 实际上是 OffscreenCanvas
-  if (layer.canvas) {
+  if (layer.canvas && (layer.canvas as OffscreenCanvas).width > 0 && (layer.canvas as OffscreenCanvas).height > 0) {
     const canvas = layer.canvas as OffscreenCanvas;
-    const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D | null;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D | null;
     if (ctx) {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      
+      // 检查数据是否全是 0 (可选，用于调试)
+      // let isAllZero = true;
+      // for(let i=3; i<imageData.data.length; i+=4) if(imageData.data[i] !== 0) { isAllZero = false; break; }
+      // if(isAllZero) console.warn(`[Worker] 图层数据全透明: ${layer.name}`);
+
       result.imageData = {
         width: canvas.width,
         height: canvas.height,
@@ -224,12 +231,51 @@ function extractTextInfoSerializable(text: Record<string, unknown>): Record<stri
   if (style.strokeColor) {
     strokeColor = colorToHex(style.strokeColor);
   }
+
+  // 计算视觉字号
+  let fontSize = style.fontSize || 12;
+  let scaleY = 1;
+  if (text.transform && (text.transform as number[]).length >= 4) {
+    const transform = text.transform as number[];
+    scaleY = Math.sqrt(transform[2] * transform[2] + transform[3] * transform[3]);
+    fontSize *= scaleY;
+  }
+  
+  // 处理富文本片段
+  let styleRuns: Record<string, unknown>[] | undefined;
+  if (text.styleRuns && (text.styleRuns as unknown[]).length > 0) {
+    const fullText = (text.text as string) || '';
+    let currentIndex = 0;
+    styleRuns = [];
+
+    for (const run of (text.styleRuns as any[])) {
+      const length = run.length;
+      const runText = fullText.substr(currentIndex, length);
+      currentIndex += length;
+
+      const runStyle = run.style || {};
+      let runColor = color;
+      if (runStyle.fillColor) {
+        runColor = colorToHex(runStyle.fillColor);
+      }
+
+      let runFontSize = runStyle.fontSize ? runStyle.fontSize * scaleY : fontSize;
+
+      styleRuns.push({
+        text: runText,
+        color: runColor,
+        fontSize: Math.round(runFontSize),
+        fontFamily: runStyle.font?.name
+      });
+    }
+  }
   
   return {
     text: text.text || '',
     fontFamily: font?.name || 'Unknown',
-    fontSize: style.fontSize || 12,
+    fontSize: Math.round(fontSize),
     color,
+    styleRuns, // 添加 styleRuns
     strokeColor,
     strokeWidth: style.strokeWidth,
     lineHeight: style.leading,
@@ -238,6 +284,9 @@ function extractTextInfoSerializable(text: Record<string, unknown>): Record<stri
     bold: style.fauxBold,
     italic: style.fauxItalic,
     underline: style.underline,
+    transform: text.transform,
+    textShape: text.shapeType as 'point' | 'box',
+    boxBounds: text.boxBounds,
   };
 }
 
@@ -285,6 +334,29 @@ function extractEffectsSerializable(effects: Record<string, unknown>): Record<st
       blur: unitsValueToNumber(shadow.blur ?? shadow.size ?? 5),
     }));
   }
+
+  if (effects.gradientOverlay) {
+    result.gradientOverlay = (effects.gradientOverlay as Record<string, unknown>[]).map(overlay => {
+      const gradient = overlay.gradient as Record<string, unknown>;
+      return {
+        opacity: overlay.opacity ?? 1,
+        angle: overlay.angle ?? 90,
+        scale: overlay.scale ?? 1,
+        blendMode: overlay.blendMode,
+        gradient: {
+          type: gradient?.type === 'noise' ? 'noise' : 'solid',
+          colorStops: (gradient?.colorStops as any[])?.map((s: any) => ({
+             color: colorToHex(s.color),
+             location: s.location || 0
+          })) || [],
+          opacityStops: (gradient?.opacityStops as any[])?.map((s: any) => ({
+             opacity: s.opacity ?? 1,
+             location: s.location || 0
+          })) || []
+        }
+      };
+    });
+  }
   
   return Object.keys(result).length > 0 ? result : {};
 }
@@ -292,9 +364,14 @@ function extractEffectsSerializable(effects: Record<string, unknown>): Record<st
 function convertPsdToSerializableWithImages(psd: Record<string, unknown>): Record<string, unknown> {
   layerIdCounter = 0;
   
+  const imageResources = psd.imageResources as Record<string, unknown> | undefined;
+  const resolutionInfo = imageResources?.resolutionInfo as Record<string, unknown> | undefined;
+  const resolution = (resolutionInfo?.horizontalResolution as number) || 72;
+  
   const result: Record<string, unknown> = {
     width: psd.width,
     height: psd.height,
+    resolution,
     layers: ((psd.children || []) as Record<string, unknown>[]).map(layer => 
       convertLayerWithImage(layer, psd)
     ),
@@ -302,9 +379,9 @@ function convertPsdToSerializableWithImages(psd: Record<string, unknown>): Recor
   
   // 合成图像
   // 在 Worker 中，canvas 实际上是 OffscreenCanvas
-  if (psd.canvas) {
+  if (psd.canvas && (psd.canvas as OffscreenCanvas).width > 0 && (psd.canvas as OffscreenCanvas).height > 0) {
     const canvas = psd.canvas as OffscreenCanvas;
-    const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D | null;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D | null;
     if (ctx) {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       result.compositeImage = {

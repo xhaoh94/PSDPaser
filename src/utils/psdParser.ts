@@ -114,11 +114,51 @@ function extractTextInfo(layer: Layer): TextLayerInfo | undefined {
     strokeColor = colorToHex((style as Record<string, unknown>).strokeColor);
   }
 
+  // 计算视觉字号 (应用 transform 缩放)
+  let fontSize = style.fontSize || 12;
+  let scaleY = 1;
+  if (text.transform && text.transform.length >= 4) {
+    const transform = text.transform;
+    // scaleY = sqrt(yx^2 + yy^2)
+    scaleY = Math.sqrt(transform[2] * transform[2] + transform[3] * transform[3]);
+    fontSize *= scaleY;
+  }
+
+  // 处理富文本片段
+  let styleRuns: TextLayerInfo['styleRuns'];
+  if (text.styleRuns && text.styleRuns.length > 0) {
+    const fullText = text.text || '';
+    let currentIndex = 0;
+    styleRuns = [];
+
+    for (const run of text.styleRuns) {
+      const length = run.length;
+      const runText = fullText.substr(currentIndex, length);
+      currentIndex += length;
+
+      const runStyle = run.style || {};
+      let runColor = color;
+      if (runStyle.fillColor) {
+        runColor = colorToHex(runStyle.fillColor);
+      }
+
+      let runFontSize = runStyle.fontSize ? runStyle.fontSize * scaleY : fontSize;
+
+      styleRuns.push({
+        text: runText,
+        color: runColor,
+        fontSize: Math.round(runFontSize),
+        fontFamily: (runStyle.font as any)?.name
+      });
+    }
+  }
+
   return {
     text: text.text || '',
     fontFamily: (font?.name as string) || 'Unknown',
-    fontSize: style.fontSize || 12,
+    fontSize: Math.round(fontSize),
     color,
+    styleRuns, // 添加 styleRuns
     strokeColor,
     strokeWidth: (style as Record<string, unknown>).strokeWidth as number | undefined,
     lineHeight: style.leading,
@@ -127,6 +167,9 @@ function extractTextInfo(layer: Layer): TextLayerInfo | undefined {
     bold: style.fauxBold,
     italic: style.fauxItalic,
     underline: style.underline,
+    transform: text.transform,
+    textShape: text.shapeType,
+    boxBounds: text.boxBounds,
   };
 }
 
@@ -193,6 +236,30 @@ function extractEffects(layer: Layer): LayerEffects | undefined {
       distance: unitsValueToNumber(shadow.distance),
       blur: unitsValueToNumber((shadow as Record<string, unknown>).blur ?? (shadow as Record<string, unknown>).size ?? 5),
     }));
+  }
+
+  // 渐变叠加
+  if (layer.effects.gradientOverlay) {
+    effects.gradientOverlay = layer.effects.gradientOverlay.map(overlay => {
+      const gradient = overlay.gradient;
+      return {
+        opacity: overlay.opacity ?? 1,
+        angle: overlay.angle ?? 90,
+        scale: overlay.scale ?? 1,
+        blendMode: overlay.blendMode,
+        gradient: {
+          type: gradient?.type === 'noise' ? 'noise' : 'solid',
+          colorStops: (gradient as any)?.colorStops?.map((s: any) => ({
+             color: colorToHex(s.color),
+             location: s.location || 0
+          })) || [],
+          opacityStops: (gradient as any)?.opacityStops?.map((s: any) => ({
+             opacity: s.opacity ?? 1,
+             location: s.location || 0
+          })) || []
+        }
+      };
+    });
   }
 
   return Object.keys(effects).length > 0 ? effects : undefined;
@@ -273,14 +340,18 @@ export function parsePsd(buffer: ArrayBuffer | Uint8Array): PsdDocument {
     skipLayerImageData: false,
     skipCompositeImageData: false,
     skipThumbnail: true,
+    applyEffects: true, // 开启图层效果应用
   });
 
   // 转换图层
   const layers: PsdLayer[] = (psd.children || []).map(layer => convertLayer(layer, psd));
 
+  const resolution = psd.imageResources?.resolutionInfo?.horizontalResolution || 72;
+
   return {
     width: psd.width,
     height: psd.height,
+    resolution,
     layers,
     canvas: psd.canvas,
   };

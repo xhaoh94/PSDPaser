@@ -59,10 +59,11 @@ interface FileSystemState {
 const DB_NAME = 'PsdParserDB';
 const STORE_NAME = 'directoryHandles';
 const HANDLE_KEY = 'lastDirectoryHandle';
+const EXPORT_HISTORY_STORE = 'exportHistory';
 
 export async function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
+    const request = indexedDB.open(DB_NAME, 2); // 升级版本以添加新 store
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
     request.onupgradeneeded = () => {
@@ -70,34 +71,80 @@ export async function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME);
       }
+      if (!db.objectStoreNames.contains(EXPORT_HISTORY_STORE)) {
+        db.createObjectStore(EXPORT_HISTORY_STORE);
+      }
     };
   });
 }
 
-export async function saveDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+/**
+ * 保存文件的导出历史
+ */
+export async function saveExportHistory(filePath: string, packageName: string, viewName: string): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    store.put(handle, HANDLE_KEY);
+    const tx = db.transaction(EXPORT_HISTORY_STORE, 'readwrite');
+    const store = tx.objectStore(EXPORT_HISTORY_STORE);
+    store.put({ packageName, viewName, timestamp: Date.now() }, filePath);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
 }
 
-export async function loadDirectoryHandle(): Promise<FileSystemDirectoryHandle | null> {
+/**
+ * 加载文件的导出历史
+ */
+export async function loadExportHistory(filePath: string): Promise<{ packageName: string, viewName: string } | null> {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.get(HANDLE_KEY);
+      const tx = db.transaction(EXPORT_HISTORY_STORE, 'readonly');
+      const store = tx.objectStore(EXPORT_HISTORY_STORE);
+      const request = store.get(filePath);
       request.onsuccess = () => resolve(request.result || null);
       request.onerror = () => reject(request.error);
     });
   } catch {
     return null;
   }
+}
+
+export async function saveDirectoryHandle(handle: FileSystemDirectoryHandle, key: string = HANDLE_KEY): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    store.put(handle, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function loadDirectoryHandle(key: string = HANDLE_KEY): Promise<FileSystemDirectoryHandle | null> {
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.get(key);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function removeDirectoryHandle(key: string = HANDLE_KEY): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    store.delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
 }
 
 // 构建目录树（使用轻量级 PsdFileInfo）

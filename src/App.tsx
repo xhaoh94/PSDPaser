@@ -1,32 +1,53 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { ConfigProvider, theme, Layout, Spin, message, Button, Tooltip } from 'antd';
+import { ConfigProvider, theme, Layout, Spin, message, Button, Tooltip, Modal } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { 
   FolderOpenOutlined, 
   FileOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  ExportOutlined,
+  ExclamationCircleOutlined
 } from '@ant-design/icons';
 import { usePsdStore, useUiStore, useSelectionStore } from './stores';
+import { useConfigStore } from './stores/configStore';
 import { FileList } from './components/FileList';
 import { CanvasViewer } from './components/CanvasViewer';
 import { LayerTree } from './components/LayerTree';
 import { PropertiesPanel } from './components/PropertiesPanel';
+import { FguiSettingsModal } from './components/FguiSettingsModal';
+import { FguiExportModal } from './components/FguiExportModal';
+import { FguiExporter } from './utils/fgui/exporter';
 import { parsePsdFromFileAsync, checkFileSizeWarning, isAsyncParsingSupported, parsePsdFromFile } from './utils/psdParser';
 import { psdCache } from './utils/psdCache';
 import { useFileSystem } from './hooks/useFileSystem';
+import { saveExportHistory, loadExportHistory } from './stores/fileSystemStore';
 import type { PsdFileInfo } from './hooks/useFileSystem';
 import './App.css';
 
 const { Sider, Content } = Layout;
 
 function App() {
-  const { setDocument, setLoading, setError, isLoading, document: psdDoc } = usePsdStore();
+  const { setDocument, setLoading, setError, isLoading, document: psdDoc, fileName: currentFileName } = usePsdStore();
   const { layerPanelHeight, setLayerPanelHeight, leftSiderWidth, setLeftSiderWidth } = useUiStore();
   const { clearSelection } = useSelectionStore();
+  const { fguiProjectName, fguiDirHandle, largeImageThreshold, fetchServerConfig, serverConfig, restoreFguiDirectory, getNamingRules } = useConfigStore();
   const [selectedFile, setSelectedFile] = useState<PsdFileInfo | null>(null);
   const [parseProgress, setParseProgress] = useState<number>(0);
   
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  
+  // 记忆的导出配置
+  const [rememberedExport, setRememberedExport] = useState<{packageName: string, viewName: string} | null>(null);
+
   const { selectDirectory, refreshDirectory, getFile } = useFileSystem();
+
+  // 加载服务器配置
+  useEffect(() => {
+    fetchServerConfig();
+    restoreFguiDirectory();
+  }, [fetchServerConfig, restoreFguiDirectory]);
 
   // 垂直 Resizer (图层面板高度)
   const isResizingVerticalRef = useRef(false);
@@ -99,6 +120,9 @@ function App() {
     if (cachedDoc) {
       console.log(`[App] 从缓存加载: ${fileInfo.name}`);
       setDocument(cachedDoc, fileInfo.name);
+      // 加载历史配置
+      const history = await loadExportHistory(fileInfo.relativePath);
+      setRememberedExport(history);
       return;
     }
     
@@ -131,6 +155,11 @@ function App() {
       psdCache.set(cacheKey, doc);
       
       setDocument(doc, fileInfo.name);
+
+      // 加载历史配置
+      const history = await loadExportHistory(fileInfo.relativePath);
+      setRememberedExport(history);
+
       setParseProgress(100);
       message.success({ content: `已加载 ${fileInfo.name}`, key: 'loading' });
     } catch (err) {
@@ -143,6 +172,62 @@ function App() {
       setParseProgress(0);
     }
   }, [getFile, setDocument, setError, setLoading, clearSelection]);
+
+  // FGUI 导出处理
+  const handleExportFgui = async (packageName: string, viewName: string) => {
+    if (!psdDoc) return;
+    
+    const namingRules = getNamingRules();
+    const exporter = new FguiExporter(fguiDirHandle!, largeImageThreshold, namingRules);
+
+    // 检查界面是否已存在
+    const exists = await exporter.checkViewExists(packageName, viewName);
+    if (exists) {
+      Modal.confirm({
+        title: '界面已存在',
+        icon: <ExclamationCircleOutlined />,
+        content: `包 "${packageName}" 中已存在界面 "${viewName}"。继续导出将覆盖现有文件，是否继续？`,
+        okText: '覆盖导出',
+        okType: 'danger',
+        cancelText: '取消',
+        onOk: () => performExport(exporter, packageName, viewName),
+      });
+    } else {
+      performExport(exporter, packageName, viewName);
+    }
+  };
+
+  const performExport = async (exporter: FguiExporter, packageName: string, viewName: string) => {
+    setExportModalOpen(false);
+    setIsExporting(true);
+    try {
+      await exporter.export(psdDoc!, packageName, viewName);
+      // 保存导出历史
+      if (selectedFile) {
+        await saveExportHistory(selectedFile.relativePath, packageName, viewName);
+        setRememberedExport({ packageName, viewName });
+      }
+      message.success('导出 FGUI 成功！');
+    } catch (err) {
+      console.error(err);
+      message.error(`导出失败: ${(err as Error).message}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const onExportClick = () => {
+    if (!psdDoc || !currentFileName) return;
+    
+    // 如果没有 FGUI 目录句柄，提示配置
+    if (!fguiDirHandle) {
+      message.info('请先选择 FGUI 项目根目录以获取写入权限');
+      setSettingsOpen(true);
+      return;
+    }
+
+    setExportModalOpen(true);
+  };
 
   const lightToken = {
     colorBgBase: '#ffffff',
@@ -181,7 +266,7 @@ function App() {
         >
           <div className="flex flex-col h-full">
             {/* App Title / Logo Area (Minimal) */}
-            <div className="h-12 flex items-center px-4 border-b border-border bg-gray-50/50 shrink-0">
+            <div className="h-12 flex items-center px-4 border-b border-border bg-gray-50/50 shrink-0 justify-between">
               <div className="font-bold text-lg text-gray-800 tracking-tight flex items-center gap-2">
                 <span className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center text-white text-xs">P</span>
                 PSD 解析器
@@ -273,6 +358,25 @@ function App() {
             <EmptyState onImport={selectDirectory} />
           )}
 
+          {/* FGUI Export Button Overlay */}
+          {psdDoc && !isLoading && (serverConfig?.enabled !== false) && (fguiProjectName || serverConfig?.enabled) && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+              <div className="pointer-events-auto">
+                <Tooltip title={fguiProjectName ? `导出到: ${fguiProjectName}` : '需要设置导出目录'}>
+                  <Button 
+                    type="default" 
+                    icon={<ExportOutlined />} 
+                    loading={isExporting}
+                    onClick={onExportClick}
+                    className="shadow-sm border-gray-300 hover:border-gray-800 hover:text-gray-800 !rounded-none px-6 bg-white/90 backdrop-blur-sm"
+                  >
+                    导出 FGUI
+                  </Button>
+                </Tooltip>
+              </div>
+            </div>
+          )}
+
           {psdDoc && !isLoading && (
             <div className="flex-1 relative overflow-hidden flex items-center justify-center p-8">
               {/* Canvas Container */}
@@ -290,6 +394,19 @@ function App() {
            </Sider>
         )}
       </Layout>
+      
+      <FguiSettingsModal 
+        open={settingsOpen} 
+        onClose={() => setSettingsOpen(false)} 
+      />
+
+      <FguiExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={handleExportFgui}
+        defaultPackageName={rememberedExport?.packageName || currentFileName?.split('@')[0] || ''}
+        defaultViewName={rememberedExport?.viewName || currentFileName?.split('@')[1]?.replace('.psd', '') || ''}
+      />
     </ConfigProvider>
   );
 }

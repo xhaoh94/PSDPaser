@@ -38,7 +38,15 @@ const TextProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
           <CopyableValue value={`${textInfo.fontSize}px`} />
         </Descriptions.Item>
         <Descriptions.Item label="颜色">
-          <CopyableColor color={textInfo.color} />
+          {textInfo.styleRuns && textInfo.styleRuns.length > 1 ? (
+            <div className="flex flex-wrap gap-1">
+              {Array.from(new Set(textInfo.styleRuns.map(run => run.color))).map((color, i) => (
+                <CopyableColor key={`${color}-${i}`} color={color} />
+              ))}
+            </div>
+          ) : (
+            <CopyableColor color={textInfo.color} />
+          )}
         </Descriptions.Item>
         {textInfo.lineHeight && (
           <Descriptions.Item label="行高">
