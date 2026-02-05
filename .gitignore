@@ -33,3 +33,6 @@ Thumbs.db
 
 # Vite
 *.local
+temp_ag_psd/
+temp/ag-psd/
+nul
