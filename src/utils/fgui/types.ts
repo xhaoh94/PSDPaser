@@ -22,7 +22,7 @@ export interface FguiNodeInfo {
   // 导出信息
   exportName: string; // 文件名 (PascalCase)
   nodeName?: string; // 实例名 (camelCase)
-  type: ComponentType | 'Image' | 'Graph' | 'Group' | 'Text' | 'Loader';
+  type: ComponentType | 'Image' | 'Graph' | 'Group' | 'Text' | 'Loader' | 'InputText' | 'RichText';
   
   // 属性
   isCommon: boolean; // 是否 Common@ 开头

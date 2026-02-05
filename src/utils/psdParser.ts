@@ -340,7 +340,6 @@ export function parsePsd(buffer: ArrayBuffer | Uint8Array): PsdDocument {
     skipLayerImageData: false,
     skipCompositeImageData: false,
     skipThumbnail: true,
-    applyEffects: true, // 开启图层效果应用
   });
 
   // 转换图层

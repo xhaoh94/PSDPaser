@@ -1,5 +1,5 @@
 import type { PsdDocument, PsdLayer, LayerBounds } from '../../types/psd';
-import { parsePsdFileName, parseLayerName } from './nameParser';
+import { parseLayerName } from './nameParser';
 import { generatePackageXml, generateComponentXml, parsePackageXml } from './xmlGenerator';
 import type { FguiNodeInfo } from './types';
 import type { NamingRules } from '../../stores/configStore';

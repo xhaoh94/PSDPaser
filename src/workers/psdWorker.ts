@@ -40,7 +40,6 @@ function parsePsdFull(buffer: ArrayBuffer) {
     skipLayerImageData: false,
     skipCompositeImageData: false,
     skipThumbnail: true,
-    applyEffects: true, // 开启图层效果应用
   });
   
   // 使用 as unknown as 绕过类型检查 (Psd 类型与 Record<string, unknown> 不兼容)
@@ -233,7 +232,7 @@ function extractTextInfoSerializable(text: Record<string, unknown>): Record<stri
   }
 
   // 计算视觉字号
-  let fontSize = style.fontSize || 12;
+  let fontSize = (style.fontSize as number) || 12;
   let scaleY = 1;
   if (text.transform && (text.transform as number[]).length >= 4) {
     const transform = text.transform as number[];
@@ -250,7 +249,7 @@ function extractTextInfoSerializable(text: Record<string, unknown>): Record<stri
 
     for (const run of (text.styleRuns as any[])) {
       const length = run.length;
-      const runText = fullText.substr(currentIndex, length);
+      const runText = fullText.substring(currentIndex, currentIndex + length);
       currentIndex += length;
 
       const runStyle = run.style || {};
@@ -259,7 +258,7 @@ function extractTextInfoSerializable(text: Record<string, unknown>): Record<stri
         runColor = colorToHex(runStyle.fillColor);
       }
 
-      let runFontSize = runStyle.fontSize ? runStyle.fontSize * scaleY : fontSize;
+      const runFontSize = runStyle.fontSize ? (runStyle.fontSize as number) * scaleY : fontSize;
 
       styleRuns.push({
         text: runText,

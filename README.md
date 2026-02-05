@@ -1,5 +1,9 @@
 离线PSD解析工具 + PSD导出FGUI
 导出FGUI功能在public目录的fgui.json里，开始选择PSD文件就会显示导出按钮，fgui.json,有配置命名规范和FGUI工程目录
 使用方式
-window,直接使用start.bat启动即可
+window,debug模式直接使用start_dev.bat启动即可
 推荐使用nssm封装成本地服务，可以实现自动启动和停止服务，提高效率。
+用nssm封装start_npx_serve_5173.bat即可，优点是没有小黑窗且可以设置开机启动，但是需要你改下bat的路径，得换成你自己当前的目录绝对路径
+如果要离线环境，运行无法运行npx命令
+则可以用python自带的http运行，详情看start_npx_serve_5173.bat
+python环境也没有？那你自己写一个http服务器吧。爱莫能助~

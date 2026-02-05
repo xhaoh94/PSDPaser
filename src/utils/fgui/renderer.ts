@@ -1,4 +1,4 @@
-import type { PsdLayer, LayerBounds } from '../../types/psd';
+import type { PsdLayer } from '../../types/psd';
 
 /**
  * 图层渲染器 (用于导出时烘焙效果)
@@ -125,7 +125,7 @@ export class LayerRenderer {
   }
 
   private renderStroke(ctx: CanvasRenderingContext2D, source: HTMLCanvasElement, effect: any, padding: number) {
-    const { color, width: strokeWidth, position } = effect;
+    const { color, width: strokeWidth } = effect;
     const directions = 32;
     const expandedWidth = source.width + padding * 2;
     const expandedHeight = source.height + padding * 2;
