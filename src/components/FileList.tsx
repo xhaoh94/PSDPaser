@@ -284,7 +284,7 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
     : 0;
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className="flex-1 min-h-0 flex flex-col bg-white overflow-hidden">
       {/* 错误提示 */}
       {error && (
         <Alert
@@ -373,7 +373,7 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
 
       {/* 文件树（使用虚拟滚动） */}
       {!isLoading && files.length > 0 && (
-        <div ref={treeContainerRef} className="flex-1 overflow-auto py-1">
+        <div ref={treeContainerRef} className="flex-1 overflow-y-auto py-1">
           <Tree
             showIcon
             blockNode
@@ -383,8 +383,8 @@ export const FileList: React.FC<FileListProps> = ({ onFileSelect, selectedFile }
             onExpand={(keys) => setExpandedKeys(keys)}
             onSelect={handleSelect}
             className="file-tree"
-            virtual={files.length > 100} // 超过 100 个文件时启用虚拟滚动
-            height={files.length > 100 ? treeHeight : undefined} // 虚拟滚动使用动态容器高度
+            virtual={files.length > 2000} // 提高阈值，优先使用原生滚动
+            height={files.length > 2000 ? treeHeight : undefined}
           />
         </div>
       )}

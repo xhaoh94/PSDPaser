@@ -177,7 +177,6 @@ export const LayerTree: React.FC = () => {
           onSelect={handleSelect}
           showLine={{ showLeafIcon: false }}
           blockNode
-          virtual
         />
       </div>
       

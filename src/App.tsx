@@ -273,53 +273,57 @@ function App() {
               </div>
             </div>
 
-            {/* File Navigation */}
-            <div className="flex flex-col min-h-0" style={{ height: psdDoc ? `calc(${100 - layerPanelHeight}% - 6px)` : '100%' }}>
-              <div className="px-4 py-3 flex items-center justify-between shrink-0">
-                <span className="text-xs font-bold text-gray-500 uppercase">文件目录</span>
-                <div className="flex items-center gap-1">
-                  <Tooltip title="刷新目录">
-                    <Button type="text" size="small" icon={<ReloadOutlined />} onClick={refreshDirectory} className="text-gray-500 hover:bg-gray-100" />
-                  </Tooltip>
-                  <Tooltip title="打开新目录">
-                    <Button type="text" size="small" icon={<FolderOpenOutlined />} onClick={selectDirectory} className="text-blue-600 hover:bg-blue-50" />
-                  </Tooltip>
+            {/* Sidebar Content (File Navigation + Layer Tree) */}
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {/* File Navigation - Top Section */}
+              <div 
+                className="flex flex-col min-h-0 overflow-hidden"
+                style={{ height: psdDoc ? `${100 - layerPanelHeight}%` : '100%', flexGrow: 0, flexShrink: 0 }}
+              >
+                <div className="px-4 py-3 flex items-center justify-between shrink-0">
+                  <span className="text-xs font-bold text-gray-500 uppercase">文件目录</span>
+                  <div className="flex items-center gap-1">
+                    <Tooltip title="刷新目录">
+                      <Button type="text" size="small" icon={<ReloadOutlined />} onClick={refreshDirectory} className="text-gray-500 hover:bg-gray-100" />
+                    </Tooltip>
+                    <Tooltip title="打开新目录">
+                      <Button type="text" size="small" icon={<FolderOpenOutlined />} onClick={selectDirectory} className="text-blue-600 hover:bg-blue-50" />
+                    </Tooltip>
+                  </div>
+                </div>
+                <div className="flex-1 min-h-0 px-2 pb-2 flex flex-col overflow-hidden">
+                  <FileList onFileSelect={handleFileSelect} selectedFile={selectedFile} />
                 </div>
               </div>
-              <div className="flex-1 overflow-hidden px-2">
-                <FileList onFileSelect={handleFileSelect} selectedFile={selectedFile} />
-              </div>
-            </div>
 
-            {/* Layer Tree (Bottom Half) */}
-            {psdDoc && (
-              <>
-                {/* Vertical Resizer Handle - 图层面板拖拽分割线 */}
+              {/* Layer Tree - Bottom Section */}
+              {psdDoc && (
                 <div 
-                  className="shrink-0 cursor-row-resize select-none"
-                  style={{ 
-                    height: '8px', 
-                    background: 'linear-gradient(to bottom, #e5e7eb 0%, #d1d5db 50%, #e5e7eb 100%)',
-                    borderTop: '1px solid #d1d5db',
-                    borderBottom: '1px solid #d1d5db',
-                  }}
-                  onMouseDown={handleVerticalMouseDown}
+                  className="flex flex-col min-h-0 shrink-0 border-t border-border bg-white" 
+                  style={{ height: `${layerPanelHeight}%` }}
                 >
-                  <div className="h-full w-full flex items-center justify-center">
-                    <div className="w-10 h-0.5 bg-gray-400 rounded-full" />
+                  {/* Vertical Resizer Handle */}
+                  <div 
+                    className="shrink-0 cursor-row-resize select-none bg-gray-100 border-b border-border hover:bg-blue-50 transition-colors"
+                    style={{ height: '6px' }}
+                    onMouseDown={handleVerticalMouseDown}
+                  >
+                    <div className="h-full w-full flex items-center justify-center">
+                      <div className="w-10 h-1 bg-gray-300 rounded-full" />
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1 flex flex-col min-h-0 bg-white">
+                    <div className="px-4 h-10 flex items-center bg-gray-50/50 border-b border-border shrink-0">
+                      <span className="text-xs font-bold text-gray-500 uppercase">图层结构</span>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <LayerTree />
+                    </div>
                   </div>
                 </div>
-                
-                <div className="flex flex-col min-h-0 bg-white" style={{ height: `${layerPanelHeight}%` }}>
-                  <div className="px-4 h-10 flex items-center bg-gray-50/50 border-b border-border shrink-0">
-                    <span className="text-xs font-bold text-gray-500 uppercase">图层结构</span>
-                  </div>
-                  <div className="flex-1 overflow-hidden">
-                    <LayerTree />
-                  </div>
-                </div>
-              </>
-            )}
+              )}
+            </div>
           </div>
         </div>
         
