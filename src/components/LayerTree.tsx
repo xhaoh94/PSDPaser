@@ -153,7 +153,7 @@ export const LayerTree: React.FC = () => {
 
   if (!document) {
     return (
-      <div className="h-full flex items-center justify-center p-4">
+      <div className="flex-1 flex items-center justify-center p-4">
         <Empty
           description={<span className="text-gray-400 text-xs">请先加载文件</span>}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -165,9 +165,9 @@ export const LayerTree: React.FC = () => {
   const totalLayers = getAllLayers().length;
 
   return (
-    <div className="h-full flex flex-col bg-white">
-      {/* 图层树 */}
-      <div className="flex-1 overflow-auto py-1">
+    <div className="flex-1 flex flex-col bg-white overflow-hidden">
+      {/* 图层树 - 使用原生滚动，不启用虚拟滚动 */}
+      <div className="flex-1 overflow-y-auto py-1">
         <Tree
           className="file-tree"
           treeData={treeData}
@@ -180,8 +180,8 @@ export const LayerTree: React.FC = () => {
         />
       </div>
       
-      {/* 底部统计 */}
-      <div className="px-4 py-2 border-t border-gray-100 text-center">
+      {/* 底部统计 - 固定高度，不压缩 */}
+      <div className="px-4 py-2 border-t border-gray-100 text-center shrink-0">
         <span className="text-[10px] text-gray-400">
           共 {totalLayers} 个图层
         </span>

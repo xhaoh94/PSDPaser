@@ -276,9 +276,9 @@ function App() {
             {/* Sidebar Content (File Navigation + Layer Tree) */}
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
               {/* File Navigation - Top Section */}
-              <div 
-                className="flex flex-col min-h-0 overflow-hidden"
-                style={{ height: psdDoc ? `${100 - layerPanelHeight}%` : '100%', flexGrow: 0, flexShrink: 0 }}
+              <div
+                className="flex flex-col overflow-hidden"
+                style={{ flex: `1 1 ${100 - layerPanelHeight}%`, minHeight: '80px' }}
               >
                 <div className="px-4 py-3 flex items-center justify-between shrink-0">
                   <span className="text-xs font-bold text-gray-500 uppercase">文件目录</span>
@@ -296,30 +296,30 @@ function App() {
                 </div>
               </div>
 
+              {/* Vertical Resizer Handle */}
+              {psdDoc && (
+                <div
+                  className="shrink-0 cursor-row-resize select-none bg-gray-100 border-y border-border hover:bg-blue-50 transition-colors"
+                  style={{ height: '6px' }}
+                  onMouseDown={handleVerticalMouseDown}
+                >
+                  <div className="h-full w-full flex items-center justify-center">
+                    <div className="w-10 h-1 bg-gray-300 rounded-full" />
+                  </div>
+                </div>
+              )}
+
               {/* Layer Tree - Bottom Section */}
               {psdDoc && (
-                <div 
-                  className="flex flex-col min-h-0 shrink-0 border-t border-border bg-white" 
-                  style={{ height: `${layerPanelHeight}%` }}
+                <div
+                  className="flex flex-col overflow-hidden bg-white"
+                  style={{ flex: `0 0 ${layerPanelHeight}%`, minHeight: '100px' }}
                 >
-                  {/* Vertical Resizer Handle */}
-                  <div 
-                    className="shrink-0 cursor-row-resize select-none bg-gray-100 border-b border-border hover:bg-blue-50 transition-colors"
-                    style={{ height: '6px' }}
-                    onMouseDown={handleVerticalMouseDown}
-                  >
-                    <div className="h-full w-full flex items-center justify-center">
-                      <div className="w-10 h-1 bg-gray-300 rounded-full" />
-                    </div>
+                  <div className="px-4 h-10 flex items-center bg-gray-50/50 border-b border-border shrink-0">
+                    <span className="text-xs font-bold text-gray-500 uppercase">图层结构</span>
                   </div>
-                  
-                  <div className="flex-1 flex flex-col min-h-0 bg-white">
-                    <div className="px-4 h-10 flex items-center bg-gray-50/50 border-b border-border shrink-0">
-                      <span className="text-xs font-bold text-gray-500 uppercase">图层结构</span>
-                    </div>
-                    <div className="flex-1 min-h-0 overflow-hidden">
-                      <LayerTree />
-                    </div>
+                  <div className="flex-1 flex flex-col overflow-hidden">
+                    <LayerTree />
                   </div>
                 </div>
               )}
@@ -341,6 +341,23 @@ function App() {
 
         {/* Main Content - Canvas */}
         <Content className="relative bg-gray-100 flex flex-col overflow-hidden">
+          {/* FGUI Export Button - 画布区域左上角 */}
+          {psdDoc && !isLoading && (
+            <div className="absolute z-50" style={{ top: '10px', left: '10px' }}>
+              <Tooltip title={fguiProjectName ? `导出到: ${fguiProjectName}` : '需要设置导出目录'}>
+                <Button 
+                  type="default" 
+                  icon={<ExportOutlined />} 
+                  loading={isExporting}
+                  onClick={onExportClick}
+                  className="shadow-sm border-gray-300 hover:border-gray-800 hover:text-gray-800 !rounded-none px-6 bg-white/90 backdrop-blur-sm"
+                >
+                  导出 FGUI
+                </Button>
+              </Tooltip>
+            </div>
+          )}
+          
           {isLoading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-50">
               <Spin size="large" />
@@ -362,30 +379,11 @@ function App() {
             <EmptyState onImport={selectDirectory} />
           )}
 
-          {/* FGUI Export Button Overlay */}
-          {psdDoc && !isLoading && (serverConfig?.enabled !== false) && (fguiProjectName || serverConfig?.enabled) && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-              <div className="pointer-events-auto">
-                <Tooltip title={fguiProjectName ? `导出到: ${fguiProjectName}` : '需要设置导出目录'}>
-                  <Button 
-                    type="default" 
-                    icon={<ExportOutlined />} 
-                    loading={isExporting}
-                    onClick={onExportClick}
-                    className="shadow-sm border-gray-300 hover:border-gray-800 hover:text-gray-800 !rounded-none px-6 bg-white/90 backdrop-blur-sm"
-                  >
-                    导出 FGUI
-                  </Button>
-                </Tooltip>
-              </div>
-            </div>
-          )}
-
           {psdDoc && !isLoading && (
             <div className="flex-1 relative overflow-hidden flex items-center justify-center p-8">
               {/* Canvas Container */}
               <div className="relative shadow-2xl bg-white" style={{ width: '100%', height: '100%' }}>
-                 <CanvasViewer />
+                <CanvasViewer />
               </div>
             </div>
           )}
