@@ -116,16 +116,35 @@ function convertLayerSerializable(layer: Record<string, unknown>, psd: Record<st
     opacity = opacity / 255;
   }
   
+  let bounds = {
+    top: layer.top ?? 0,
+    left: layer.left ?? 0,
+    bottom: layer.bottom ?? 0,
+    right: layer.right ?? 0,
+  };
+  
+  // 如果图层本身 bounds 无效 (0x0)，尝试使用 mask 的 bounds
+  // 这常见于纯色填充层(Solid Color Fill)，其主体通常被视为无边界，但显示范围由 mask 决定
+  const width = (bounds.right as number) - (bounds.left as number);
+  const height = (bounds.bottom as number) - (bounds.top as number);
+  
+  if ((width <= 0 || height <= 0) && layer.mask) {
+    const mask = layer.mask as Record<string, number>;
+    if (mask.top !== undefined && mask.right !== undefined) {
+      bounds = {
+        top: mask.top,
+        left: mask.left,
+        bottom: mask.bottom,
+        right: mask.right,
+      };
+    }
+  }
+
   const result: Record<string, unknown> = {
     id: `layer_${++layerIdCounter}_${Date.now()}`,
     name: layer.name || 'Unnamed Layer',
     type,
-    bounds: {
-      top: layer.top ?? 0,
-      left: layer.left ?? 0,
-      bottom: layer.bottom ?? 0,
-      right: layer.right ?? 0,
-    },
+    bounds,
     visible: !layer.hidden,
     opacity,
     blendMode: layer.blendMode,
@@ -133,8 +152,47 @@ function convertLayerSerializable(layer: Record<string, unknown>, psd: Record<st
   };
   
   // 提取效果
-  if (layer.effects) {
-    result.effects = extractEffectsSerializable(layer.effects as Record<string, unknown>);
+  // 同时检查矢量填充(vectorFill)中的渐变，将其转换为 gradientOverlay 以便统一渲染
+  let effectsData = (layer.effects as Record<string, unknown>) || {};
+  
+  if (layer.vectorFill) {
+    const fill = layer.vectorFill as Record<string, unknown>;
+    
+    // DEBUG: 打印特定图层的 vectorFill 信息
+    const layerName = layer.name as string || '';
+    if (layerName.includes('league_prog_bg_dqsc')) {
+       // console.warn(`[Worker] DEBUG LAYER: ${layerName}`);
+       // console.warn(`- vectorFill:`, JSON.stringify(fill));
+       // console.warn(`- effects:`, JSON.stringify(layer.effects));
+       // console.warn(`- solidColor:`, JSON.stringify((layer as any).solidColor));
+       // console.warn(`- blendMode:`, layer.blendMode);
+       // console.warn(`- opacity:`, layer.opacity);
+    }
+
+    if (fill.type === 'gradient' && fill.gradient) {
+      // 构造模拟的 gradientOverlay
+      const gradientOverlay = {
+        opacity: 1,
+        angle: fill.angle ?? 90,
+        scale: fill.scale ?? 1,
+        gradient: fill.gradient,
+        blendMode: 'normal'
+      };
+      
+      // console.warn(`[Worker] Converted vector gradient to overlay for ${layer.name}`);
+      
+      // 如果没有现有的渐变叠加，则使用填充渐变
+      // 注意：这里我们创建一个新的对象以避免修改原始数据
+      if (!effectsData.gradientOverlay) {
+        effectsData = { ...effectsData, gradientOverlay: [gradientOverlay] };
+      }
+    } else {
+       // console.warn(`[Worker] vectorFill type mismatch: ${fill.type}`);
+    }
+  }
+
+  if (Object.keys(effectsData).length > 0) {
+    result.effects = extractEffectsSerializable(effectsData);
   }
   
   // 提取文本信息
@@ -355,6 +413,14 @@ function extractEffectsSerializable(effects: Record<string, unknown>): Record<st
         }
       };
     });
+  }
+  
+  if (effects.colorOverlay) {
+    result.colorOverlay = (effects.colorOverlay as Record<string, unknown>[]).map(overlay => ({
+      color: colorToHex(overlay.color),
+      opacity: overlay.opacity ?? 1,
+      blendMode: overlay.blendMode
+    }));
   }
   
   return Object.keys(result).length > 0 ? result : {};

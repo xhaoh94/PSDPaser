@@ -85,6 +85,11 @@ export interface LayerEffects {
       opacityStops: { opacity: number; location: number }[];
     };
   }[];
+  colorOverlay?: {
+    color: string;
+    opacity: number;
+    blendMode?: string;
+  }[];
 }
 
 // 图层遮罩

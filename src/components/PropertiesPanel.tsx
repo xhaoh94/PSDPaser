@@ -10,6 +10,7 @@ import { useSelectionStore } from '../stores';
 import { getLayerSize } from '../types/psd';
 import { CopyableValue, CopyableColor } from './CopyableValue';
 import type { PsdLayer } from '../types/psd';
+import { parseLayerName } from '../utils/fgui/nameParser';
 
 /**
  * 文本图层属性
@@ -82,6 +83,10 @@ const ImageProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
   const { imageInfo } = layer;
   if (!imageInfo) return null;
 
+  // 解析导出名称 (去除九宫格参数等后缀)
+  const info = parseLayerName(imageInfo.name || layer.name);
+  const exportName = info.exportName;
+
   return (
     <>
       <Divider plain className="!text-text-muted !border-border !my-4 !text-xs font-medium">
@@ -93,7 +98,7 @@ const ImageProperties: React.FC<{ layer: PsdLayer }> = ({ layer }) => {
 
       <Descriptions column={1} size="small" styles={{ label: { width: 80, color: '#a1a1aa' } }}>
         <Descriptions.Item label="资源名称">
-          <CopyableValue value={imageInfo.name} ellipsis maxWidth={150} />
+          <CopyableValue value={exportName} ellipsis maxWidth={150} />
         </Descriptions.Item>
         {imageInfo.originalWidth && imageInfo.originalHeight && (
           <Descriptions.Item label="原始尺寸">

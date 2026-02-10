@@ -1,13 +1,14 @@
 # PSDParser
 
-离线 PSD 文件解析工具，在线查看元素效果，减少美术标注的时间。
-支持将 Photoshop (PSD) 文件导出为 FairyGUI (FGUI) 格式。（可配置）
+离线PSD预览 + PSD2UGUI + PSD2FGUI。
+集成元素标注+导出预制、fgui包功能
 
 ## 功能特性
 
 - **离线解析**：无需上传文件到服务器，在本地安全解析 PSD 文件
 - **图层可视化**：直观的图层树展示和画布预览
 - **FGUI 导出**：一键导出 PSD 到 FairyGUI 格式
+- **UGUI 导出**：一键导出 PSD 到 UGUI
 - **自定义命名规则**：支持灵活的图层命名规范配置
 
 ## 技术栈
@@ -62,8 +63,7 @@ npm run lint
 
 ```json
 {
-  "enabled": true,
-  "fguiProjectDir": "C:\\Project\\YourFGUIProject",
+  "enabled": true,  
   "namingRules": {
     "prefixes": {
       "common": "Common@"
@@ -86,11 +86,34 @@ npm run lint
 **配置说明：**
 
 - `enabled`：是否启用 FGUI 导出功能
-- `fguiProjectDir`：FGUI 工程目录路径
 - `namingRules`：图层命名规则
   - `prefixes`：前缀规则
   - `suffixes`：后缀规则（如 `@NoExport` 表示不导出该图层）
   - `componentPrefix`：组件类型映射规则
+
+### UGUI 导出配置
+
+导出功能配置文件位于 `public/ugui.json`，包含以下配置项：
+
+```json
+{
+  "enabled": true,
+  "spriteDirectory": "",
+  "prefabOutputDirectory": "",
+  "namingRules": {
+    "suffixes": {
+      "noExport": "@NoExport",
+      "text": "@txt"
+    }
+  },
+  "pixelsPerUnit": 100
+}
+```
+
+**配置说明：**
+
+- `enabled`：是否启用 UGUI 导出功能
+  - `suffixes`：后缀规则（如 `@NoExport` 表示不导出该图层）  
 
 ## 使用指南
 
@@ -101,18 +124,21 @@ npm run lint
 3. 在右侧画布中预览图层效果
 4. 在属性面板中查看图层详细信息
 5. 点击"导出 FGUI"按钮生成 FGUI 资源
+6. 点击"导出 UGUI"按钮生成 UGUI 资源
+可以配置多个公共目录（公共包）、如果导出资源，会优先获取是否在公共目录，如果存在则直接引用，不存在才会生成在对应的目录下。
 
 ### 命名规范
 
-使用特定的命名规则可以优化导出结果：
-
-- `@NoExport`：不导出该图层
+使用特定的命名规则可以优化导出结果：(仅支持fgui，UGUI个人工作经验感觉不需要这些)
 - `@img`：导出为图片资源
 - `@txt`：导出为输入框组件
 - `@rich`：导出为富文本组件
 - `Com`：导出为普通组件
 - `Btn`：导出为按钮组件
 - `ChkBtn`：导出为复选框按钮
+fgui、ugui都支持的规则
+- `@NoExport`：不导出该图层
+- `@9#w,h_l,r,t,b`九宫格格式 这个fgui和ugui都支持
 
 ## 部署为本地服务
 
@@ -147,6 +173,7 @@ python -m http.server 5173 --directory dist
 PSDPaser/
 ├── public/           # 静态资源和配置文件
 │   └── fgui.json     # FGUI 导出配置
+│   └── ugui.json     # UGUI 导出配置
 ├── src/
 │   ├── components/   # React 组件
 │   ├── hooks/        # 自定义 Hooks

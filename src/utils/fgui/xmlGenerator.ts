@@ -38,6 +38,7 @@ export function parsePackageXml(xml: string): { id: string; resources: FguiResou
     const nameMatch = attrsStr.match(/\bname="([^"]+)"/);
     const pathMatch = attrsStr.match(/\bpath="([^"]+)"/);
     const exportedMatch = attrsStr.match(/\bexported="([^"]+)"/);
+    const sizeMatch = attrsStr.match(/\bsize="(\d+),(\d+)"/);
     
     if (idMatch && nameMatch) {
       resources.push({
@@ -45,7 +46,9 @@ export function parsePackageXml(xml: string): { id: string; resources: FguiResou
         name: nameMatch[1],
         type,
         path: pathMatch ? pathMatch[1] : undefined,
-        exported: exportedMatch ? exportedMatch[1] === 'true' : undefined
+        exported: exportedMatch ? exportedMatch[1] === 'true' : undefined,
+        width: sizeMatch ? parseInt(sizeMatch[1]) : 0,
+        height: sizeMatch ? parseInt(sizeMatch[2]) : 0
       });
     }
   }
@@ -93,7 +96,7 @@ export function buildXml(node: XmlNode, indentLevel = 0): string {
  */
 export function generatePackageXml(
   packageId: string, 
-  resources: { id: string; name: string; type: string; path?: string; exported?: boolean }[]
+  resources: FguiResource[]
 ): string {
   const root: XmlNode = {
     tag: 'packageDescription',
@@ -101,15 +104,31 @@ export function generatePackageXml(
     children: [
       {
         tag: 'resources',
-        children: resources.map(res => ({
-          tag: res.type, // component, image, etc.
-          attrs: {
-            id: res.id,
-            name: res.name,
-            path: res.path,
-            exported: res.exported ? 'true' : undefined
+        children: resources.map(res => {
+          // 处理九宫格数据转换 (TRBL -> XYWH)
+          let scale9gridStr: string | undefined;
+          if (res.scale9grid && res.width && res.height) {
+             const [top, right, bottom, left] = res.scale9grid;
+             const x = left;
+             const y = top;
+             const w = Math.max(0, res.width - left - right);
+             const h = Math.max(0, res.height - top - bottom);
+             scale9gridStr = `${x},${y},${w},${h}`;
+             console.log(`[XmlGenerator] 9-slice for ${res.name}: Size=${res.width}x${res.height}, TRBL=[${top},${right},${bottom},${left}] -> Rect=${scale9gridStr}`);
           }
-        }))
+
+          return {
+            tag: res.type, // component, image, etc.
+            attrs: {
+              id: res.id,
+              name: res.name,
+              path: res.path,
+              exported: res.exported ? 'true' : undefined,
+              scale: res.scale9grid ? '9grid' : undefined,
+              scale9grid: scale9gridStr // 使用转换后的 XYWH 格式
+            }
+          };
+        })
       }
     ]
   };

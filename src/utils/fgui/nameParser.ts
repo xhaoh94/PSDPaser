@@ -100,18 +100,28 @@ export function parseLayerName(layerName: string, customRules?: NamingRules): Fg
     layerName = layerName.substring(0, layerName.length - rules.suffixes.rich.length);
   }
 
-  // 九宫格 @9#t_r_b_l (top, right, bottom, left)
-  // 这个规则通常比较固定，可以不提取，或者作为特殊规则
-  const scale9Match = layerName.match(/@9#(\d+)_(\d+)_(\d+)_(\d+)/);
-  if (scale9Match) {
+  // 九宫格 @9#width,height_left,right,top,bottom
+  // 必须是6个数字，格式固定
+  const scale9NewMatch = layerName.match(/@9#(\d+),(\d+)_(\d+),(\d+),(\d+),(\d+)/);
+  if (scale9NewMatch) {
+    // Width, Height, Left, Right, Top, Bottom
+    result.targetSize = {
+      width: parseInt(scale9NewMatch[1]),
+      height: parseInt(scale9NewMatch[2])
+    };
+    // FGUI scale9Grid order: Top, Right, Bottom, Left
     result.scale9Grid = [
-      parseInt(scale9Match[1]),
-      parseInt(scale9Match[2]),
-      parseInt(scale9Match[3]),
-      parseInt(scale9Match[4])
+      parseInt(scale9NewMatch[5]), // Top
+      parseInt(scale9NewMatch[4]), // Right
+      parseInt(scale9NewMatch[6]), // Bottom
+      parseInt(scale9NewMatch[3])  // Left
     ];
-    layerName = layerName.replace(scale9Match[0], '');
+    console.log(`[NameParser] Parsed 9-slice for ${result.originalName}:`, result.scale9Grid, result.targetSize);
+    layerName = layerName.replace(scale9NewMatch[0], '');
   }
+  
+  // 旧格式 @9#t_r_b_l 已移除支持
+  // 如果需要兼容，请使用新格式 @9#w,h_t,r,b,l
 
   // 3. 检查组件类型前缀
   // 动态构建正则
@@ -138,6 +148,11 @@ export function parseLayerName(layerName: string, customRules?: NamingRules): Fg
         
         // nodeName (实例名): camelCase
         result.nodeName = finalPrefix + camelSuffix;
+        
+        // 如果是 Common 组件，添加 Common 前缀 (大驼峰)
+        if (result.isCommon) {
+            result.exportName = 'Common' + result.exportName;
+        }
     }
   } else {
     // 普通图层，使用清理后的名称

@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "spriteDirectory": "",
+  "prefabOutputDirectory": "",
+  "namingRules": {
+    "suffixes": {
+      "noExport": "@NoExport",
+      "text": "@txt"
+    }
+  },
+  "pixelsPerUnit": 100
+}

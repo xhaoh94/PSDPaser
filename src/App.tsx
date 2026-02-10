@@ -16,26 +16,49 @@ import { LayerTree } from './components/LayerTree';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { FguiSettingsModal } from './components/FguiSettingsModal';
 import { FguiExportModal } from './components/FguiExportModal';
+import { UguiExportModal } from './components/UguiExportModal';
 import { FguiExporter } from './utils/fgui/exporter';
+import { UGUIExporter } from './utils/ugui/exporter';
 import { parsePsdFromFileAsync, checkFileSizeWarning, isAsyncParsingSupported, parsePsdFromFile } from './utils/psdParser';
 import { psdCache } from './utils/psdCache';
 import { useFileSystem } from './hooks/useFileSystem';
 import { saveExportHistory, loadExportHistory } from './stores/fileSystemStore';
 import type { PsdFileInfo } from './hooks/useFileSystem';
+import type { PsdDocument, PsdLayer } from './types/psd';
 import './App.css';
 
 const { Sider, Content } = Layout;
+
+// 检查文档是否包含无效的 Image 图层 (0x0 bounds 且无 canvas)
+// 用于检测缓存是否包含旧的错误解析结果
+function hasInvalidLayers(doc: PsdDocument): boolean {
+  const checkLayer = (layer: PsdLayer): boolean => {
+    if (layer.type === 'image' && !layer.canvas) {
+       const w = layer.bounds.right - layer.bounds.left;
+       const h = layer.bounds.bottom - layer.bounds.top;
+       // 如果是 image 类型，无 canvas 且 bounds 为 0，说明解析有误
+       // 注意：纯色层现在会被 Worker 修复 bounds，如果这里还是 0，说明是旧缓存
+       if (w <= 0 || h <= 0) return true;
+    }
+    if (layer.children) {
+      return layer.children.some(checkLayer);
+    }
+    return false;
+  };
+  return doc.layers.some(checkLayer);
+}
 
 function App() {
   const { setDocument, setLoading, setError, isLoading, document: psdDoc, fileName: currentFileName } = usePsdStore();
   const { layerPanelHeight, setLayerPanelHeight, leftSiderWidth, setLeftSiderWidth } = useUiStore();
   const { clearSelection } = useSelectionStore();
-  const { fguiProjectName, fguiDirHandle, largeImageThreshold, fetchServerConfig, serverConfig, restoreFguiDirectory, getNamingRules } = useConfigStore();
+  const { fguiProjectName, fguiDirHandle, largeImageThreshold, fetchServerConfig, serverConfig, restoreFguiDirectory, getNamingRules, restoreUguiDirectories, uguiSpriteDirHandle, uguiOutputDirHandle, uguiCommonPaths, uguiBigFileDirHandle, uguiFontDirHandle, fguiCommonPaths, fguiBigFileDirHandle } = useConfigStore();
   const [selectedFile, setSelectedFile] = useState<PsdFileInfo | null>(null);
   const [parseProgress, setParseProgress] = useState<number>(0);
   
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [uguiModalOpen, setUguiModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   
   // 记忆的导出配置
@@ -47,7 +70,8 @@ function App() {
   useEffect(() => {
     fetchServerConfig();
     restoreFguiDirectory();
-  }, [fetchServerConfig, restoreFguiDirectory]);
+    restoreUguiDirectories();
+  }, [fetchServerConfig, restoreFguiDirectory, restoreUguiDirectories]);
 
   // 垂直 Resizer (图层面板高度)
   const isResizingVerticalRef = useRef(false);
@@ -118,12 +142,17 @@ function App() {
     const cachedDoc = psdCache.get(cacheKey);
     
     if (cachedDoc) {
-      console.log(`[App] 从缓存加载: ${fileInfo.name}`);
-      setDocument(cachedDoc, fileInfo.name);
-      // 加载历史配置
-      const history = await loadExportHistory(fileInfo.relativePath);
-      setRememberedExport(history);
-      return;
+      if (hasInvalidLayers(cachedDoc)) {
+        console.warn(`[App] 缓存的文档包含无效图层，强制重新解析: ${fileInfo.name}`);
+        // 不使用缓存，继续向下执行解析逻辑
+      } else {
+        console.log(`[App] 从缓存加载: ${fileInfo.name}`);
+        setDocument(cachedDoc, fileInfo.name);
+        // 加载历史配置
+        const history = await loadExportHistory(fileInfo.relativePath);
+        setRememberedExport(history);
+        return;
+      }
     }
     
     // 文件大小警告
@@ -178,7 +207,13 @@ function App() {
     if (!psdDoc) return;
     
     const namingRules = getNamingRules();
-    const exporter = new FguiExporter(fguiDirHandle!, largeImageThreshold, namingRules);
+    const exporter = new FguiExporter(
+      fguiDirHandle!, 
+      largeImageThreshold, 
+      namingRules,
+      fguiCommonPaths,
+      fguiBigFileDirHandle
+    );
 
     // 检查界面是否已存在
     const exists = await exporter.checkViewExists(packageName, viewName);
@@ -216,16 +251,78 @@ function App() {
     }
   };
 
+  // UGUI 导出处理
+  const handleExportUgui = async (prefabName: string) => {
+    if (!psdDoc || !uguiSpriteDirHandle || !uguiOutputDirHandle) return;
+    
+    // 验证权限 - File System Access API 权限可能在异步操作中过期，需要重新验证
+    const verifyPermission = async (handle: FileSystemDirectoryHandle) => {
+      try {
+        // @ts-ignore
+        if ((await handle.queryPermission({ mode: 'readwrite' })) === 'granted') {
+          return true;
+        }
+        // @ts-ignore
+        if ((await handle.requestPermission({ mode: 'readwrite' })) === 'granted') {
+          return true;
+        }
+        return false;
+      } catch (e) {
+        return false;
+      }
+    };
+    
+    const spritePerm = await verifyPermission(uguiSpriteDirHandle);
+    const outputPerm = await verifyPermission(uguiOutputDirHandle);
+    
+    if (!spritePerm || !outputPerm) {
+      message.error('需要目录访问权限，请重新选择目录');
+      return;
+    }
+    
+    setUguiModalOpen(false);
+    setIsExporting(true);
+    
+    try {
+      const namingRules = getNamingRules();
+      const exporter = new UGUIExporter(
+        uguiSpriteDirHandle, 
+        uguiOutputDirHandle, 
+        namingRules,
+        uguiCommonPaths,
+        uguiBigFileDirHandle,
+        512, // 大图阈值
+        uguiFontDirHandle // 字体目录
+      );
+      
+      // 传入确认覆盖的回调
+      await exporter.export(psdDoc, prefabName, async () => {
+        // 使用 Modal.confirm 显示确认对话框
+        return new Promise((resolve) => {
+          Modal.confirm({
+            title: '文件已存在',
+            content: `预制件 "${prefabName}.prefab" 已存在，是否覆盖？`,
+            okText: '覆盖',
+            cancelText: '取消',
+            onOk: () => resolve(true),
+            onCancel: () => resolve(false),
+          });
+        });
+      });
+      
+      message.success(`导出 UGUI Prefab "${prefabName}" 成功！`);
+    } catch (err) {
+      console.error(err);
+      message.error(`导出失败: ${(err as Error).message}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const onExportClick = () => {
     if (!psdDoc || !currentFileName) return;
     
-    // 如果没有 FGUI 目录句柄，提示配置
-    if (!fguiDirHandle) {
-      message.info('请先选择 FGUI 项目根目录以获取写入权限');
-      setSettingsOpen(true);
-      return;
-    }
-
+    // 不再强制检查目录，允许在导出弹窗中设置
     setExportModalOpen(true);
   };
 
@@ -341,20 +438,38 @@ function App() {
 
         {/* Main Content - Canvas */}
         <Content className="relative bg-gray-100 flex flex-col overflow-hidden">
-          {/* FGUI Export Button - 画布区域左上角 */}
+          {/* Export Buttons Overlay */}
           {psdDoc && !isLoading && (
             <div className="absolute z-50" style={{ top: '10px', left: '10px' }}>
-              <Tooltip title={fguiProjectName ? `导出到: ${fguiProjectName}` : '需要设置导出目录'}>
-                <Button 
-                  type="default" 
-                  icon={<ExportOutlined />} 
-                  loading={isExporting}
-                  onClick={onExportClick}
-                  className="shadow-sm border-gray-300 hover:border-gray-800 hover:text-gray-800 !rounded-none px-6 bg-white/90 backdrop-blur-sm"
-                >
-                  导出 FGUI
-                </Button>
-              </Tooltip>
+              <div className="pointer-events-auto flex" style={{ gap: '10px' }}>
+                {/* FGUI Button */}
+                {(serverConfig?.enabled !== false) && (fguiProjectName || serverConfig?.enabled) && (
+                  <Tooltip title={fguiProjectName ? `导出到: ${fguiProjectName}` : '需要设置导出目录'}>
+                    <Button 
+                      type="default" 
+                      icon={<ExportOutlined />} 
+                      loading={isExporting}
+                      onClick={onExportClick}
+                      className="shadow-sm border-gray-300 hover:border-gray-800 hover:text-gray-800 !rounded-none px-6 bg-white/90 backdrop-blur-sm"
+                    >
+                      导出 FGUI
+                    </Button>
+                  </Tooltip>
+                )}
+
+                {/* UGUI Button */}
+                <Tooltip title="导出到 Unity Prefab">
+                  <Button 
+                    type="default" 
+                    icon={<ExportOutlined />} 
+                    loading={isExporting}
+                    onClick={() => setUguiModalOpen(true)}
+                    className="shadow-sm border-gray-300 hover:border-gray-800 hover:text-gray-800 !rounded-none px-6 bg-white/90 backdrop-blur-sm"
+                  >
+                    导出 UGUI
+                  </Button>
+                </Tooltip>
+              </div>
             </div>
           )}
           
@@ -408,6 +523,13 @@ function App() {
         onExport={handleExportFgui}
         defaultPackageName={rememberedExport?.packageName || currentFileName?.split('@')[0] || ''}
         defaultViewName={rememberedExport?.viewName || currentFileName?.split('@')[1]?.replace('.psd', '') || ''}
+      />
+
+      <UguiExportModal 
+        open={uguiModalOpen} 
+        onClose={() => setUguiModalOpen(false)}
+        onExport={handleExportUgui}
+        defaultPrefabName={currentFileName?.split('@')[0] || 'NewPrefab'}
       />
     </ConfigProvider>
   );

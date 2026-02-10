@@ -35,20 +35,31 @@ export class FguiExporter {
   private resolution: number = 72; // PSD DPI
   private namingRules?: NamingRules;
   private renderer: LayerRenderer;
+  private commonPaths: FileSystemDirectoryHandle[] = [];
+  private bigFileHandle: FileSystemDirectoryHandle | null = null;
+  private commonResources: Map<string, { id: string, packageId: string, width: number, height: number, type: string }> = new Map();
   
   // 上下文
   private currentPackage: PackageContext | null = null;
   private commonPackage: PackageContext | null = null;
-  private singlePackage: PackageContext | null = null;
+  private bigFilePackage: PackageContext | null = null;
   
   // 资源缓存
   private resourceMap: ResourceMap = {};
 
-  constructor(rootHandle: FileSystemDirectoryHandle, largeImageThreshold = 512, namingRules?: NamingRules) {
+  constructor(
+    rootHandle: FileSystemDirectoryHandle, 
+    largeImageThreshold = 512, 
+    namingRules?: NamingRules,
+    commonPaths: FileSystemDirectoryHandle[] = [],
+    bigFileHandle: FileSystemDirectoryHandle | null = null
+  ) {
     this.rootHandle = rootHandle;
     this.largeImageThreshold = largeImageThreshold;
     this.namingRules = namingRules;
     this.renderer = new LayerRenderer();
+    this.commonPaths = commonPaths;
+    this.bigFileHandle = bigFileHandle;
   }
 
   // 获取子目录句柄 (如果不存在则创建)
@@ -102,11 +113,9 @@ export class FguiExporter {
     }
 
     // 4. 创建子目录
-    if (name !== 'Single') {
-      await this.getDirectory(packageDir, 'Component');
-      await this.getDirectory(packageDir, 'Assets');
-      await this.getDirectory(packageDir, 'View');
-    }
+    await this.getDirectory(packageDir, 'Component');
+    await this.getDirectory(packageDir, 'Assets');
+    await this.getDirectory(packageDir, 'View');
 
     return {
       id,
@@ -116,14 +125,94 @@ export class FguiExporter {
     };
   }
 
+  // 扫描公共包资源
+  private async scanCommonPackages() {
+    console.log(`[FGUI] Scanning ${this.commonPaths.length} common packages...`);
+    this.commonResources.clear();
+    
+    for (const handle of this.commonPaths) {
+      try {
+        const packageName = handle.name;
+        // 读取 package.xml
+        try {
+          const fileHandle = await handle.getFileHandle('package.xml', { create: false });
+          const file = await fileHandle.getFile();
+          const text = await file.text();
+          
+          const parsed = parsePackageXml(text);
+          if (parsed.id && parsed.resources) {
+            console.log(`[FGUI] Found common package: ${packageName} (id=${parsed.id}) with ${parsed.resources.length} resources`);
+            
+            // 建立映射 fileName -> resource info
+            for (const res of parsed.resources) {
+              if (res.name) {
+                // name 通常是 "Assets/xxx.png" 或 "xxx.png"
+                const fileName = res.name.split('/').pop() || res.name;
+                const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
+                
+                // 处理 Image 和 Component
+                if (res.type === 'image' || res.type === 'component') {
+                  // 如果还未记录，记录之（优先使用第一个找到的）
+                  if (!this.commonResources.has(nameWithoutExt)) {
+                    this.commonResources.set(nameWithoutExt, {
+                      id: res.id,
+                      packageId: parsed.id,
+                      width: res.width || 0,
+                      height: res.height || 0,
+                      type: res.type
+                    });
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`[FGUI] Failed to read package.xml for common package: ${packageName}`, e);
+        }
+      } catch (e) {
+        console.warn(`[FGUI] Failed to access common package: ${handle.name}`, e);
+      }
+    }
+    console.log(`[FGUI] Scanned common resources map: ${this.commonResources.size} items`);
+  }
+
   // 主导出方法
   public async export(psd: PsdDocument, packageName: string, viewName: string): Promise<void> {
     this.resolution = psd.resolution || 72;
 
+    // 扫描公共包
+    await this.scanCommonPackages();
+
     // 2. 初始化包环境
     this.currentPackage = await this.initPackage(packageName);
     this.commonPackage = await this.initPackage('Common');
-    this.singlePackage = await this.initPackage('Single');
+    
+    // 初始化 BigFile 包 (如果配置了)
+    if (this.bigFileHandle) {
+      try {
+        const fileHandle = await this.bigFileHandle.getFileHandle('package.xml', { create: false });
+        const file = await fileHandle.getFile();
+        const text = await file.text();
+        const parsed = parsePackageXml(text);
+        
+        this.bigFilePackage = {
+          id: parsed.id || generateId(),
+          name: this.bigFileHandle.name,
+          resources: parsed.resources || [],
+          handle: this.bigFileHandle
+        };
+        console.log(`[FGUI] Initialized BigFile package: ${this.bigFilePackage.name} (${this.bigFilePackage.id})`);
+      } catch {
+        console.warn(`[FGUI] BigFile package has no package.xml, treating as new package`);
+        this.bigFilePackage = {
+          id: generateId(),
+          name: this.bigFileHandle.name,
+          resources: [],
+          handle: this.bigFileHandle
+        };
+      }
+    }
+
     this.resourceMap = {};
 
     // 3. 预处理图层 (提取图片资源)
@@ -138,7 +227,9 @@ export class FguiExporter {
     // 6. 生成所有 package.xml
     await this.savePackageXml(this.currentPackage);
     await this.savePackageXml(this.commonPackage);
-    await this.savePackageXml(this.singlePackage);
+    if (this.bigFilePackage) {
+      await this.savePackageXml(this.bigFilePackage);
+    }
   }
 
   // 处理资源 (图片)
@@ -168,31 +259,137 @@ export class FguiExporter {
     }
   }
 
+  /**
+   * 处理多颜色文本 (FGUI UBB 格式)
+   * 自动识别占比最高的颜色为主色，其余使用 [color] 标签
+   */
+  private processMultiColorText(textInfo: any): { mainColor: string, text: string, isRich: boolean } {
+    const { text, color: defaultColor, styleRuns } = textInfo;
+    
+    // 如果没有 styleRuns 或只有一个片段，直接返回
+    if (!styleRuns || styleRuns.length <= 1) {
+      return { mainColor: defaultColor || '#000000', text: text || '', isRich: false };
+    }
+    
+    // 1. 统计各颜色的字符数
+    const colorCount: Map<string, number> = new Map();
+    for (const run of styleRuns) {
+      const runColor = run.color || defaultColor || '#000000';
+      const count = colorCount.get(runColor) || 0;
+      colorCount.set(runColor, count + run.text.length);
+    }
+    
+    // 2. 找出占比最高的颜色作为主色
+    let mainColor = defaultColor || '#000000';
+    let maxCount = 0;
+    for (const [runColor, count] of colorCount.entries()) {
+      if (count > maxCount) {
+        maxCount = count;
+        mainColor = runColor;
+      }
+    }
+    
+    // 3. 生成带 UBB 标签的文本
+    let richText = '';
+    let hasDifferentColor = false;
+    
+    for (const run of styleRuns) {
+      const runColor = run.color || defaultColor || '#000000';
+      // 颜色不同于主色时，添加 UBB 标签
+      if (runColor.toLowerCase() !== mainColor.toLowerCase()) {
+        richText += `[color=${runColor}]${run.text}[/color]`;
+        hasDifferentColor = true;
+      } else {
+        richText += run.text;
+      }
+    }
+    
+    // 如果没有任何不同颜色的片段，说明全是主色，不需要 UBB
+    if (!hasDifferentColor) {
+      return { mainColor, text: text || '', isRich: false };
+    }
+    
+    return { mainColor, text: richText, isRich: true };
+  }
+
+  // 还原九宫格图片 (从拉伸后的大图还原回小图)
+  private reduceScale9Image(canvas: HTMLCanvasElement, targetW: number, targetH: number, grid: number[]): HTMLCanvasElement {
+    // grid: [top, right, bottom, left]
+    const [top, right, bottom, left] = grid;
+    
+    // 原图尺寸 (拉伸后的)
+    const srcW = canvas.width;
+    const srcH = canvas.height;
+    
+    const result = document.createElement('canvas');
+    result.width = targetW;
+    result.height = targetH;
+    const ctx = result.getContext('2d');
+    if (!ctx) return canvas;
+    
+    // 1. 左上角 (Top-Left)
+    if (top > 0 && left > 0)
+      ctx.drawImage(canvas, 0, 0, left, top, 0, 0, left, top);
+      
+    // 2. 右上角 (Top-Right)
+    if (top > 0 && right > 0)
+      ctx.drawImage(canvas, srcW - right, 0, right, top, targetW - right, 0, right, top);
+      
+    // 3. 左下角 (Bottom-Left)
+    if (bottom > 0 && left > 0)
+      ctx.drawImage(canvas, 0, srcH - bottom, left, bottom, 0, targetH - bottom, left, bottom);
+      
+    // 4. 右下角 (Bottom-Right)
+    if (bottom > 0 && right > 0)
+      ctx.drawImage(canvas, srcW - right, srcH - bottom, right, bottom, targetW - right, targetH - bottom, right, bottom);
+      
+    // 5. 上边 (Top Edge) - 拉伸/缩放
+    if (top > 0 && (targetW - left - right) > 0) {
+       ctx.drawImage(canvas, 
+          left, 0, srcW - left - right, top, 
+          left, 0, targetW - left - right, top
+       );
+    }
+    
+    // 6. 下边 (Bottom Edge)
+    if (bottom > 0 && (targetW - left - right) > 0) {
+       ctx.drawImage(canvas, 
+          left, srcH - bottom, srcW - left - right, bottom, 
+          left, targetH - bottom, targetW - left - right, bottom
+       );
+    }
+    
+    // 7. 左边 (Left Edge)
+    if (left > 0 && (targetH - top - bottom) > 0) {
+       ctx.drawImage(canvas, 
+          0, top, left, srcH - top - bottom, 
+          0, top, left, targetH - top - bottom
+       );
+    }
+    
+    // 8. 右边 (Right Edge)
+    if (right > 0 && (targetH - top - bottom) > 0) {
+       ctx.drawImage(canvas, 
+          srcW - right, top, right, srcH - top - bottom, 
+          targetW - right, top, right, targetH - top - bottom
+       );
+    }
+    
+    // 9. 中间 (Center)
+    if ((targetW - left - right) > 0 && (targetH - top - bottom) > 0) {
+       ctx.drawImage(canvas, 
+          left, top, srcW - left - right, srcH - top - bottom, 
+          left, top, targetW - left - right, targetH - top - bottom
+       );
+    }
+    
+    return result;
+  }
+
   // 导出单张图片
   private async exportImage(layer: PsdLayer, info: FguiNodeInfo) {
     if (!layer.canvas) return;
 
-    const width = layer.canvas.width;
-    const height = layer.canvas.height;
-    
-    // 判断目标包
-    let targetPkg = this.currentPackage!;
-    let subDir = 'Assets';
-    let fileName = info.exportName + '.png';
-
-    // 1. 大图检查 -> Single 包
-    if (width > this.largeImageThreshold || height > this.largeImageThreshold) {
-      targetPkg = this.singlePackage!;
-      subDir = ''; // Single 包直接放根目录
-    } 
-    // 2. Common 检查
-    else if (info.isCommon) {
-      targetPkg = this.commonPackage!;
-    }
-
-    const fileId = generateId();
-    const filePath = subDir ? `/${subDir}/` : '/';
-    
     // 转换 Blob
     // 使用 LayerRenderer 烘焙图层效果 (渐变叠加、描边、投影等)
     const bakedCanvas = await this.renderer.bakeLayer(layer);
@@ -202,15 +399,89 @@ export class FguiExporter {
     const exportWidth = targetCanvas.width;
     const exportHeight = targetCanvas.height;
 
+    // 0. 检查是否在公共包中已存在 (仅通过文件名匹配)
+    if (this.commonResources.has(info.exportName)) {
+      const res = this.commonResources.get(info.exportName)!;
+      // 记录引用，不导出文件
+      this.resourceMap[layer.id] = {
+        id: res.id,
+        fileName: info.exportName + '.png',
+        packageId: res.packageId,
+        width: res.width > 0 ? res.width : exportWidth, 
+        height: res.height > 0 ? res.height : exportHeight,
+        path: '/' 
+      };
+      console.log(`[FGUI] Reuse common resource: ${info.exportName} (pkg=${res.packageId})`);
+      return;
+    }
+
+    // 如果有 targetSize (九宫格还原)，使用该尺寸作为导出尺寸
+    let finalExportWidth = exportWidth;
+    let finalExportHeight = exportHeight;
+    
+    if (info.targetSize && info.scale9Grid) {
+       finalExportWidth = info.targetSize.width;
+       finalExportHeight = info.targetSize.height;
+    }
+
+    // 判断目标包
+    let targetPkg = this.currentPackage!;
+    let subDir = 'Assets';
+    let fileName = info.exportName + '.png';
+
+    // 1. 大图检查 -> BigFile 包
+    // 使用 finalExportWidth/Height 判断 (还原后的小图通常不会是大图)
+    if (finalExportWidth > this.largeImageThreshold || finalExportHeight > this.largeImageThreshold) {
+      if (this.bigFilePackage) {
+        targetPkg = this.bigFilePackage;
+        subDir = ''; // BigFile 包通常放根目录
+        console.log(`[FGUI] Exporting big file to ${targetPkg.name}: ${fileName}`);
+      }
+    } 
+    // 2. Common 检查
+    else if (info.isCommon) {
+      targetPkg = this.commonPackage!;
+    }
+
+    const filePath = subDir ? `/${subDir}/` : '/';
+
+    // 检查目标包中是否已存在同名资源 (去重)
+    const existingRes = targetPkg.resources.find(r => r.name === fileName && r.path === filePath);
+    
+    if (existingRes) {
+        // 复用
+        const isCrossPackage = targetPkg !== this.currentPackage;
+        this.resourceMap[layer.id] = {
+            id: existingRes.id,
+            fileName,
+            packageId: isCrossPackage ? targetPkg.id : '',
+            width: exportWidth,
+            height: exportHeight,
+            path: filePath
+        };
+        console.log(`[FGUI] Reuse existing resource in package: ${fileName}`);
+        return;
+    }
+
+    const fileId = generateId();
+
     const exportCanvas = document.createElement('canvas');
-    exportCanvas.width = exportWidth;
-    exportCanvas.height = exportHeight;
+    exportCanvas.width = finalExportWidth;
+    exportCanvas.height = finalExportHeight;
     const ctx = exportCanvas.getContext('2d');
     if (!ctx) return;
     
     // 确保透明背景
-    ctx.clearRect(0, 0, exportWidth, exportHeight);
-    ctx.drawImage(targetCanvas, 0, 0);
+    ctx.clearRect(0, 0, finalExportWidth, finalExportHeight);
+    
+    if (info.targetSize && info.scale9Grid) {
+       // 九宫格还原绘制
+       const reduced = this.reduceScale9Image(targetCanvas, finalExportWidth, finalExportHeight, info.scale9Grid);
+       ctx.drawImage(reduced, 0, 0);
+    } else {
+       // 普通绘制
+       ctx.drawImage(targetCanvas, 0, 0);
+    }
 
     const blob = await new Promise<Blob | null>(resolve => exportCanvas.toBlob(resolve, 'image/png'));
     if (!blob) return;
@@ -220,31 +491,31 @@ export class FguiExporter {
     if (subDir) targetDir = await this.getDirectory(targetDir, subDir);
     
     await this.writeFile(targetDir, fileName, blob);
-
-    // 记录资源
+    
+    // 记录资源 (添加 packageId，如果是跨包引用)
+    // 如果目标是当前包，packageId 为空；如果是其他包（Common/BigFile），需要 packageId
+    const isCrossPackage = targetPkg !== this.currentPackage;
+    
     this.resourceMap[layer.id] = {
       id: fileId,
       fileName,
-      packageId: targetPkg.id,
+      packageId: isCrossPackage ? targetPkg.id : '',
       width: exportWidth,
       height: exportHeight,
-      path: filePath + fileName
+      path: filePath
     };
-
-    // 添加到 package.xml 资源列表
-    // 查重：同名资源是否已存在
-    const existing = targetPkg.resources.find(r => r.name === fileName && r.path === filePath);
-    if (!existing) {
-      targetPkg.resources.push({
-        id: fileId,
-        name: fileName,
-        type: 'image',
-        path: filePath
-      });
-    } else {
-      // 更新 ID 映射，使用已存在的 ID
-      this.resourceMap[layer.id].id = existing.id;
-    }
+    
+    // 添加到目标包的资源列表
+    targetPkg.resources.push({
+      id: fileId,
+      name: fileName,
+      type: 'image',
+      path: filePath,
+      exported: true,
+      scale9grid: info.scale9Grid, // 传递九宫格数据 [T, R, B, L]
+      width: finalExportWidth,     // 传递实际图片尺寸，用于计算九宫格 rect
+      height: finalExportHeight
+    });
   }
 
   // 处理组件生成
@@ -254,6 +525,26 @@ export class FguiExporter {
       const info = parseLayerName(layer.name, this.namingRules);
       
       if (info.noExport) continue;
+
+      // 0. 检查是否是公共组件 (复用)
+      if (info.isExported) {
+         if (this.commonResources.has(info.exportName)) {
+             const res = this.commonResources.get(info.exportName)!;
+             if (res.type === 'component') {
+                 // 记录引用，跳过生成
+                 this.resourceMap[layer.id] = {
+                     id: res.id,
+                     fileName: info.exportName + '.xml',
+                     packageId: res.packageId,
+                     width: 0, 
+                     height: 0,
+                     path: '/' 
+                 };
+                 console.log(`[FGUI] Reuse common component: ${info.exportName} (pkg=${res.packageId})`);
+                 continue; // 跳过子节点处理和组件生成
+             }
+         }
+      }
 
       // 1. 优先递归处理子图层中的组件 (Bottom-Up)
       // 这样子组件会先被生成并注册到 resourceMap 中
@@ -341,7 +632,21 @@ export class FguiExporter {
     }
 
     const componentId = generateId();
-    const fileName = info.exportName + '.xml';
+    
+    // 检查命名冲突 (与 Image 冲突)
+    let finalExportName = info.exportName;
+    // 检查是否存在同名但非 component 类型的资源
+    const hasConflict = targetPkg.resources.some(r => {
+        const rName = r.name.replace(/\.[^/.]+$/, "");
+        return rName === finalExportName && r.type !== 'component';
+    });
+    
+    if (hasConflict) {
+        finalExportName += '_Comp';
+        console.warn(`[FGUI] Name conflict detected: ${info.exportName} -> ${finalExportName}`);
+    }
+
+    const fileName = finalExportName + '.xml';
     
     // 生成 DisplayList
     // 使用可视边界（紧包围内容）
@@ -387,9 +692,14 @@ export class FguiExporter {
   }
 
   // 构建 DisplayList XML 节点
-  private async buildDisplayList(layers: PsdLayer[], offsetX: number, offsetY: number): Promise<any[]> {
+  private async buildDisplayList(
+    layers: PsdLayer[], 
+    offsetX: number, 
+    offsetY: number, 
+    indexCounter?: { value: number }
+  ): Promise<any[]> {
+    const counter = indexCounter || { value: 0 };
     const nodes: any[] = [];
-    let elementIndex = 0; // 用于生成 n0, n1...
 
     for (const child of layers) {
       if (!child.visible) continue;
@@ -406,7 +716,7 @@ export class FguiExporter {
 
       const commonAttrs: any = {
         id: generateId(),
-        name: `n${elementIndex++}`, // 使用 fgui 默认的 n0, n1... 命名
+        name: `n${counter.value++}`, // 使用共享计数器
         xy: `${Math.round(x)},${Math.round(y)}`,
         size: `${Math.round(w)},${Math.round(h)}`
       };
@@ -424,7 +734,7 @@ export class FguiExporter {
           attrs: {
             ...commonAttrs,
             src: res.id,
-            pkg: res.packageId !== this.currentPackage?.id ? res.packageId : undefined
+            pkg: res.packageId && res.packageId !== this.currentPackage?.id ? res.packageId : undefined
           }
         });
         continue;
@@ -510,44 +820,13 @@ export class FguiExporter {
         }
 
         // 处理多色文本 (UBB)
-        // 只要有 styleRuns，就假设可能有样式变化，使用 UBB
-        let textContent = textInfo?.text || '';
-        let ubb: string | undefined = undefined;
-
-        if (textInfo?.styleRuns && textInfo.styleRuns.length > 1) {
-          // 合并相邻且样式相同的片段
-          const mergedRuns: any[] = [];
-          let lastRun: any = null;
-          for (const run of textInfo.styleRuns) {
-             if (lastRun && lastRun.color === run.color) {
-                lastRun.text += run.text;
-             } else {
-                lastRun = { ...run };
-                mergedRuns.push(lastRun);
-             }
-          }
-          
-          // 检查是否有多种颜色
-          const distinctColors = new Set(mergedRuns.map(r => r.color));
-          const hasDifferentColor = distinctColors.size > 1 || (distinctColors.size === 1 && mergedRuns[0].color !== textInfo.color);
-          
-          if (hasDifferentColor) {
-            ubb = 'true';
-            textContent = mergedRuns.map(run => {
-              let content = run.text;
-              // 只有颜色不同于主颜色时才加标签
-              if (run.color && run.color !== textInfo.color) {
-                content = `[color=${run.color}]${content}[/color]`;
-              }
-              return content;
-            }).join('');
-          }
-        }
+        const { mainColor, text: textContent, isRich } = this.processMultiColorText(textInfo);
+        const ubb = isRich ? 'true' : undefined;
 
         const textAttrs: any = {
           ...commonAttrs,
           text: textContent,
-          color: textInfo?.color || '#000000',
+          color: mainColor, // 使用计算出的主色
           fontSize: Math.round(fontSize),
           font: textInfo?.fontFamily || 'Arial',
           align: textInfo?.textAlign || 'left',
@@ -627,13 +906,15 @@ export class FguiExporter {
           const attrs: any = {
             ...commonAttrs,
             src: res.id,
-            pkg: res.packageId !== this.currentPackage?.id ? res.packageId : undefined
+            pkg: res.packageId && res.packageId !== this.currentPackage?.id ? res.packageId : undefined
           };
           
           // 九宫格
-          if (childInfo.scale9Grid) {
-            attrs.scale9grid = childInfo.scale9Grid.join(',');
-          }
+          // 移除：scale9grid 属性应该在 package.xml 中设置，组件中引用时不需要重复设置
+          // 除非需要覆盖资源属性，但通常我们希望保持一致
+          // if (childInfo.scale9Grid) {
+          //   attrs.scale9grid = childInfo.scale9Grid.join(',');
+          // }
 
           nodes.push({
             tag: 'image',
@@ -652,7 +933,8 @@ export class FguiExporter {
       if (child.type === 'group' && child.children) {
         // 递归展平
         // 注意坐标系：子节点的 bounds 已经是绝对坐标了，所以 offsetX/Y 依然是父组件的。
-        const groupNodes = await this.buildDisplayList(child.children, offsetX, offsetY);
+        // 传递共享的 indexCounter
+        const groupNodes = await this.buildDisplayList(child.children, offsetX, offsetY, counter);
         nodes.push(...groupNodes);
       }
     }

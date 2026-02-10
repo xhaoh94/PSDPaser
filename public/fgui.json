@@ -1,6 +1,5 @@
 {
   "enabled": true,
-  "fguiProjectDir": "E:\\Projects\\Unity\\UxGame\\Unity\\FGUIProject",
   "namingRules": {
     "prefixes": {
       "common": "Common@"

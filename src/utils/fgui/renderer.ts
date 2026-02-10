@@ -41,10 +41,21 @@ export class LayerRenderer {
     const hasDropShadow = !!layer.effects?.dropShadow?.[0];
     const hasStroke = !!layer.effects?.stroke?.[0];
     const hasGradient = !!layer.effects?.gradientOverlay?.[0];
+    const hasColorOverlay = !!layer.effects?.colorOverlay?.[0];
     const hasMask = !!(layer.mask && layer.mask.canvas && !layer.mask.disabled);
+    
+    console.log(`[LayerRenderer] Layer "${layer.name}" effects check:`, {
+      hasDropShadow,
+      hasStroke,
+      hasGradient,
+      hasColorOverlay,
+      hasMask,
+      effects: layer.effects ? Object.keys(layer.effects) : 'none'
+    });
 
-    if (!hasDropShadow && !hasStroke && !hasGradient && !hasMask) {
-      return layer.canvas; // 无效果，直接返回原始
+    if (!hasDropShadow && !hasStroke && !hasGradient && !hasColorOverlay && !hasMask) {
+      console.log(`[LayerRenderer] Layer "${layer.name}" has no effects, returning original canvas`);
+      return layer.canvas; // 直接返回原始 canvas，避免不必要的复制导致内容丢失
     }
 
     // 计算 padding (为描边和投影留出空间)
@@ -59,11 +70,14 @@ export class LayerRenderer {
     const resultCanvas = document.createElement('canvas');
     resultCanvas.width = fullWidth;
     resultCanvas.height = fullHeight;
-    const ctx = resultCanvas.getContext('2d');
+    const ctx = resultCanvas.getContext('2d', { alpha: true });
     if (!ctx) return null;
+    
+    // 清除为透明背景
+    ctx.clearRect(0, 0, fullWidth, fullHeight);
 
     // 1. 处理遮罩后的内容
-    let contentCanvas: HTMLCanvasElement = layer.canvas;
+    let contentCanvas: HTMLCanvasElement = layer.canvas!;
     if (hasMask) {
       const maskTemp = this.getCanvas('mask', width, height);
       const mctx = maskTemp.getContext('2d')!;
@@ -84,37 +98,72 @@ export class LayerRenderer {
 
     // 2. 绘制描边 (使用原始形状，不包含遮罩)
     if (hasStroke) {
+      console.log(`[LayerRenderer] Rendering stroke for "${layer.name}"`);
       this.renderStroke(ctx, layer.canvas, layer.effects!.stroke![0], padding);
     }
 
     // 3. 绘制投影
     if (hasDropShadow) {
+      console.log(`[LayerRenderer] Rendering drop shadow for "${layer.name}"`);
       this.renderDropShadow(ctx, contentCanvas, layer.effects!.dropShadow![0], padding);
     }
 
-    // 4. 绘制主体内容 (含渐变叠加)
+    // 4. 绘制主体内容 (含渐变叠加/颜色叠加)
     ctx.save();
     ctx.translate(padding, padding);
     
-    if (hasGradient) {
-      // 渐变叠加：先画内容，然后用 source-in 画渐变
-      const gradCanvas = document.createElement('canvas');
-      gradCanvas.width = width;
-      gradCanvas.height = height;
-      const gctx = gradCanvas.getContext('2d')!;
+    if (hasGradient || hasColorOverlay) {
+      console.log(`[LayerRenderer] Rendering overlays for "${layer.name}" (Color: ${hasColorOverlay}, Gradient: ${hasGradient})`);
       
-      // 1. 画基础形状
-      gctx.drawImage(contentCanvas, 0, 0);
+      const overlayCanvas = document.createElement('canvas');
+      overlayCanvas.width = width;
+      overlayCanvas.height = height;
+      const octx = overlayCanvas.getContext('2d', { alpha: true });
       
-      // 2. 应用渐变
-      gctx.globalCompositeOperation = 'source-in';
-      const overlay = layer.effects!.gradientOverlay![0];
-      const gradient = this.createCanvasGradient(gctx, width, height, overlay);
-      gctx.fillStyle = gradient;
-      gctx.globalAlpha = overlay.opacity;
-      gctx.fillRect(0, 0, width, height);
-      
-      ctx.drawImage(gradCanvas, 0, 0);
+      if (octx) {
+        octx.clearRect(0, 0, width, height);
+        // 1. 画基础形状
+        octx.drawImage(contentCanvas, 0, 0);
+        
+        // 2. 应用渐变叠加 (Gradient Overlay)
+        // 注意：这里的渐变可能来自 vectorFill (基础填充) 或 实际的图层效果。
+        // 如果是 vectorFill，它应该被 Color Overlay 覆盖。
+        // 如果是图层效果，Photoshop 中通常 Gradient Overlay 和 Color Overlay 的覆盖顺序取决于列表顺序，
+        // 但 Color Overlay 用于整体染色时通常期望覆盖所有内容。
+        // 所以我们将 Gradient 放在 Color 之前应用。
+        if (hasGradient) {
+          const overlay = layer.effects!.gradientOverlay![0];
+          
+          octx.globalCompositeOperation = 'source-in'; // 限制在形状内
+          if (hasColorOverlay) {
+             // 如果之后还有颜色叠加，我们也先应用渐变作为底色
+             octx.globalCompositeOperation = 'source-atop'; 
+          }
+          
+          const gradient = this.createCanvasGradient(octx, width, height, overlay);
+          if (gradient) {
+            octx.fillStyle = gradient;
+            octx.globalAlpha = overlay.opacity ?? 1;
+            octx.fillRect(0, 0, width, height);
+          }
+        }
+
+        // 3. 应用颜色叠加 (Color Overlay)
+        if (hasColorOverlay) {
+           const colorEffect = layer.effects!.colorOverlay![0];
+           // source-atop: 在现有内容（包括可能已应用的渐变）上绘制，保留 alpha
+           octx.globalCompositeOperation = 'source-atop'; 
+           octx.fillStyle = colorEffect.color; 
+           octx.globalAlpha = colorEffect.opacity ?? 1;
+           octx.fillRect(0, 0, width, height);
+           // 重置 Alpha
+           octx.globalAlpha = 1;
+        }
+        
+        ctx.drawImage(overlayCanvas, 0, 0);
+      } else {
+        ctx.drawImage(contentCanvas, 0, 0);
+      }
     } else {
       ctx.drawImage(contentCanvas, 0, 0);
     }
@@ -177,6 +226,9 @@ export class LayerRenderer {
     const { angle, gradient } = overlay;
     const rad = (angle * Math.PI) / 180;
     
+    // DEBUG: 详细打印渐变对象
+    console.log('[LayerRenderer] Processing gradient object:', gradient);
+    
     // 计算渐变起止点
     const cx = w / 2;
     const cy = h / 2;
@@ -189,12 +241,26 @@ export class LayerRenderer {
 
     const canvasGrad = ctx.createLinearGradient(x0, y0, x1, y1);
     
+    // 检查 colorStops 是否存在
+    if (!gradient.colorStops || !Array.isArray(gradient.colorStops)) {
+      console.warn('[LayerRenderer] Gradient missing colorStops:', gradient);
+      return null;
+    }
+    
     // 添加颜色和透明度停靠点
     // PS 的渐变通常比较复杂，这里做一个简单的合并
+    // 检查location范围：如果是0-4096则除以4096，如果是0-1则直接使用
+    const firstLocation = gradient.colorStops[0]?.location || 0;
+    const needsScaling = firstLocation > 1; // 如果location>1，说明是0-4096范围
+    
+    console.log('[LayerRenderer] Gradient scaling:', { firstLocation, needsScaling });
+    
     const stops = gradient.colorStops.map((cs: any) => {
-       const os = gradient.opacityStops.find((o: any) => Math.abs(o.location - cs.location) < 0.01) || { opacity: 1 };
+       // opacityStops 可能是可选的
+       const os = gradient.opacityStops?.find((o: any) => Math.abs(o.location - cs.location) < 0.01) || { opacity: 1 };
+       const offset = needsScaling ? cs.location / 4096 : cs.location;
        return { 
-         offset: cs.location / 4096, // ag-psd location range 0-4096
+         offset,
          color: cs.color,
          opacity: os.opacity
        };
@@ -205,7 +271,8 @@ export class LayerRenderer {
        const r = parseInt(hex.substring(0, 2), 16);
        const g = parseInt(hex.substring(2, 4), 16);
        const b = parseInt(hex.substring(4, 6), 16);
-       canvasGrad.addColorStop(s.offset, `rgba(${r},${g},${b},${s.opacity})`);
+       canvasGrad.addColorStop(Math.max(0, Math.min(1, s.offset)), `rgba(${r},${g},${b},${s.opacity})`);
+       // console.log('[LayerRenderer] Gradient stop:', { offset: s.offset, color: s.color, opacity: s.opacity });
     });
 
     return canvasGrad;

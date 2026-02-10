@@ -43,9 +43,9 @@ const convertLayersToTreeData = (
   return layers.map((layer) => ({
     key: layer.id,
     title: (
-      <div className="flex items-center gap-2 py-0.5">
+      <div className="flex items-center gap-2 py-0.5 w-full">
         {/* 可见性图标 */}
-        <div className="w-4 flex justify-center group">
+        <div className="w-4 flex justify-center group shrink-0">
           {layer.visible ? (
             <EyeOutlined className="text-gray-400 text-[10px] group-hover:text-gray-600" />
           ) : (
@@ -53,14 +53,13 @@ const convertLayersToTreeData = (
           )}
         </div>
         {/* 类型图标 */}
-        <div className="w-4 flex justify-center">
+        <div className="w-4 flex justify-center shrink-0">
           {getLayerIcon(layer.type)}
         </div>
         {/* 图层名称 */}
         <Tooltip title={layer.name} mouseEnterDelay={0.8}>
           <span
-            className={`text-xs truncate ${layer.visible ? 'text-gray-700' : 'text-gray-400'}`}
-            style={{ maxWidth: 140 }}
+            className={`text-xs truncate flex-1 min-w-0 ${layer.visible ? 'text-gray-700' : 'text-gray-400'}`}
           >
             {layer.name}
           </span>
@@ -167,7 +166,7 @@ export const LayerTree: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col bg-white overflow-hidden">
       {/* 图层树 - 使用原生滚动，不启用虚拟滚动 */}
-      <div className="flex-1 overflow-y-auto py-1">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden py-1">
         <Tree
           className="file-tree"
           treeData={treeData}

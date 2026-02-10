@@ -279,16 +279,33 @@ function convertLayer(layer: Layer, psd: Psd): PsdLayer {
     opacity = opacity / 255;
   }
 
+  let bounds = {
+    top: layer.top ?? 0,
+    left: layer.left ?? 0,
+    bottom: layer.bottom ?? 0,
+    right: layer.right ?? 0,
+  };
+
+  // 修复：如果图层本身 bounds 无效 (0x0)，尝试使用 mask 的 bounds
+  const width = bounds.right - bounds.left;
+  const height = bounds.bottom - bounds.top;
+  
+  if ((width <= 0 || height <= 0) && layer.mask) {
+    if (layer.mask.top !== undefined && layer.mask.right !== undefined) {
+      bounds = {
+        top: layer.mask.top ?? 0,
+        left: layer.mask.left ?? 0,
+        bottom: layer.mask.bottom ?? 0,
+        right: layer.mask.right ?? 0,
+      };
+    }
+  }
+
   const result: PsdLayer = {
     id: generateLayerId(),
     name: layer.name || 'Unnamed Layer',
     type,
-    bounds: {
-      top: layer.top ?? 0,
-      left: layer.left ?? 0,
-      bottom: layer.bottom ?? 0,
-      right: layer.right ?? 0,
-    },
+    bounds,
     visible: !layer.hidden,
     opacity,
     blendMode: layer.blendMode,

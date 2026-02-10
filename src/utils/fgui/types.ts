@@ -8,6 +8,9 @@ export interface FguiResource {
   type: string;
   path?: string;
   exported?: boolean;
+  width?: number;
+  height?: number;
+  scale9grid?: number[]; // [top, right, bottom, left]
 }
 
 export interface FguiPackageInfo {
@@ -32,6 +35,7 @@ export interface FguiNodeInfo {
   isTitle?: boolean; // @title
   isImg?: boolean; // @img (Loader)
   scale9Grid?: number[]; // @9#t_r_b_l
+  targetSize?: { width: number, height: number }; // @9#w_h_t_r_b_l
   isBarBg?: boolean; // @barbg
   isBar?: boolean; // @bar
   noExport?: boolean; // @NoExport
