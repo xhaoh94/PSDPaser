@@ -108,6 +108,8 @@ TextureImporter:
   userData: 
   assetBundleName: 
   assetBundleVariant: 
+  alphaUsage: 1
+  alphaIsTransparency: 1
 `;
 }
 

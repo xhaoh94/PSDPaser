@@ -262,7 +262,11 @@ export class PrefabGenerator {
       }
       
       if (node.info.type === 'Image' && node.componentId) {
-        const type = (node.info.border || node.sprite?.border) ? 1 : 0;
+        const border = node.info.border || node.sprite?.border;
+        // 只有当 border 存在且至少有一个非零值时，才使用 Sliced (1)，否则使用 Simple (0)
+        const hasBorder = border && border.some(v => v > 0);
+        const type = hasBorder ? 1 : 0;
+        
         // Image使用白色作为基础色，应用图层透明度
         // 回退：恢复使用图层透明度，因为有些图片可能需要半透明效果，且 PNG 导出时可能未包含正确的 Alpha
         const imageColor = { r: 1, g: 1, b: 1, a: node.layer.opacity };

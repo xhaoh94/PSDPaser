@@ -7,8 +7,12 @@ const DEFAULT_SUFFIXES = {
 };
 
 export function parseLayerName(layerName: string, layerType?: string, rules?: NamingRules): UGUINodeInfo {
+  // Truncate at first space (ignore comments/metadata after space)
+  const originalInputName = layerName;
+  layerName = layerName.trim().split(' ')[0];
+
   const result: UGUINodeInfo = {
-    originalName: layerName,
+    originalName: originalInputName,
     exportName: layerName,
     type: 'Image',
     noExport: false,

@@ -59,9 +59,13 @@ export function parsePsdFileName(fileName: string): FguiPackageInfo | null {
  * 解析图层名称
  */
 export function parseLayerName(layerName: string, customRules?: NamingRules): FguiNodeInfo {
+  // Truncate at first space (ignore comments/metadata after space)
+  const originalInputName = layerName;
+  layerName = layerName.trim().split(' ')[0];
+
   const rules = customRules || DEFAULT_RULES;
   const result: FguiNodeInfo = {
-    originalName: layerName,
+    originalName: originalInputName,
     exportName: layerName,
     type: 'Image', // 默认为图片
     isCommon: false,
