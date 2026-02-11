@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
-import { Modal, Form, Input, Divider, Button, Tag, message } from 'antd';
-import { FolderOpenOutlined, PlusOutlined } from '@ant-design/icons';
+import React, { useEffect, useState } from 'react';
+import { Modal, Form, Input, Button, Tag, message, Checkbox } from 'antd';
+import { FolderOpenOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons';
 import { useConfigStore } from '../stores/configStore';
 
 interface FguiExportModalProps {
@@ -19,6 +19,13 @@ export const FguiExportModal: React.FC<FguiExportModalProps> = ({
   defaultViewName = '',
 }) => {
   const [form] = Form.useForm();
+  const [configOpen, setConfigOpen] = useState(false);
+
+  // 关闭导出弹窗时，也关闭配置弹窗
+  const handleClose = () => {
+    setConfigOpen(false);
+    onClose();
+  };
   const { 
     fguiDirHandle,
     setFguiDirectory,
@@ -26,7 +33,9 @@ export const FguiExportModal: React.FC<FguiExportModalProps> = ({
     fguiBigFileDirHandle,
     addFguiCommonPath,
     removeFguiCommonPath,
-    setFguiBigFileDirectory
+    setFguiBigFileDirectory,
+    overwriteImages,
+    setOverwriteImages
   } = useConfigStore();
 
   useEffect(() => {
@@ -52,7 +61,7 @@ export const FguiExportModal: React.FC<FguiExportModalProps> = ({
     try {
       const handle = await (window as any).showDirectoryPicker();
       setFguiDirectory(handle);
-    } catch (e) {
+    } catch {
       // Ignore abort
     }
   };
@@ -61,7 +70,7 @@ export const FguiExportModal: React.FC<FguiExportModalProps> = ({
     try {
       const handle = await (window as any).showDirectoryPicker();
       addFguiCommonPath(handle);
-    } catch (e) {
+    } catch {
       // Ignore abort
     }
   };
@@ -70,106 +79,146 @@ export const FguiExportModal: React.FC<FguiExportModalProps> = ({
     try {
       const handle = await (window as any).showDirectoryPicker();
       setFguiBigFileDirectory(handle);
-    } catch (e) {
+    } catch {
       // Ignore abort
     }
   };
 
   return (
-    <Modal
-      title="导出 FGUI"
-      open={open}
-      onOk={handleOk}
-      onCancel={onClose}
-      okText="确认导出"
-      cancelText="取消"
-      destroyOnClose
-    >
-      <Form
-        form={form}
-        layout="vertical"
-        initialValues={{
-          packageName: defaultPackageName,
-          viewName: defaultViewName,
-        }}
+    <>
+      <Modal
+        title={
+          <div className="flex items-center gap-2">
+            <span>导出 FGUI</span>
+            <Button
+              type="text"
+              icon={<SettingOutlined />}
+              onClick={() => setConfigOpen(true)}
+              title="高级配置"
+              size="small"
+            />
+          </div>
+        }
+        open={open}
+        onOk={handleOk}
+        onCancel={handleClose}
+        okText="确认导出"
+        cancelText="取消"
+        destroyOnClose={false}
       >
-        <Form.Item label="FGUI 项目目录">
-          <div className="flex gap-2">
-            <Input 
-              readOnly 
-              value={fguiDirHandle ? fguiDirHandle.name : ''} 
-              placeholder="请选择 FGUI 工程根目录" 
-              className="flex-1"
-            />
-            <Button icon={<FolderOpenOutlined />} onClick={handleSelectFguiDir}>
-              选择
-            </Button>
-          </div>
-        </Form.Item>
-
-        <Form.Item
-          name="packageName"
-          label="包名 (Package Name)"
-          rules={[{ required: true, message: '请输入包名' }]}
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{
+            packageName: defaultPackageName,
+            viewName: defaultViewName,
+          }}
         >
-          <Input placeholder="例如: Main" />
-        </Form.Item>
-        <Form.Item
-          name="viewName"
-          label="界面名 (View Name)"
-          rules={[{ required: true, message: '请输入界面名' }]}
-        >
-          <Input placeholder="例如: LoginView" />
-        </Form.Item>
+          <Form.Item label="FGUI 项目目录">
+            <div className="flex gap-2">
+              <Input 
+                readOnly 
+                value={fguiDirHandle ? fguiDirHandle.name : ''} 
+                placeholder="请选择 FGUI 工程根目录" 
+                className="flex-1"
+              />
+              <Button icon={<FolderOpenOutlined />} onClick={handleSelectFguiDir}>
+                选择
+              </Button>
+            </div>
+          </Form.Item>
 
-        <Divider>高级配置</Divider>
+          <Form.Item
+            name="packageName"
+            label="包名 (Package Name)"
+            rules={[{ required: true, message: '请输入包名' }]}
+          >
+            <Input placeholder="例如: Main" />
+          </Form.Item>
+          <Form.Item
+            name="viewName"
+            label="界面名 (View Name)"
+            rules={[{ required: true, message: '请输入界面名' }]}
+          >
+            <Input placeholder="例如: LoginView" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
-        {/* BigFile Directory */}
-        <div className="flex flex-col gap-1 mb-4">
-          <label className="text-sm font-medium text-gray-700">BigFile 目录 (大图导出，512px以上)</label>
-          <div className="flex gap-2">
-            <Input 
-              readOnly 
-              value={fguiBigFileDirHandle ? fguiBigFileDirHandle.name : ''} 
-              placeholder="未选择（可选，默认 Assets）" 
-              className="flex-1"
-            />
-            <Button icon={<FolderOpenOutlined />} onClick={handleSelectBigFileDir}>
-              选择
-            </Button>
+      <Modal
+        title="高级配置"
+        open={configOpen}
+        onCancel={() => setConfigOpen(false)}
+        footer={[
+          <Button key="close" onClick={() => setConfigOpen(false)}>
+            关闭
+          </Button>
+        ]}
+        zIndex={1100}
+      >
+        <div className="flex flex-col gap-6">
+          {/* BigFile Directory */}
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-gray-700">BigFile 目录 (大图导出，512px以上)</label>
+            <div className="flex gap-2">
+              <Input 
+                readOnly 
+                value={fguiBigFileDirHandle ? fguiBigFileDirHandle.name : ''} 
+                placeholder="未选择（可选，默认 Assets）" 
+                className="flex-1"
+              />
+              <Button icon={<FolderOpenOutlined />} onClick={handleSelectBigFileDir}>
+                选择
+              </Button>
+            </div>
           </div>
-        </div>
 
-        {/* Common Paths */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700">公共包资源路径</label>
-            <Button 
-              type="dashed" 
-              size="small" 
-              icon={<PlusOutlined />} 
-              onClick={handleAddCommonPath}
-            >
-              添加
-            </Button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {fguiCommonPaths.length === 0 && (
-              <span className="text-gray-400 text-sm">未配置公共路径</span>
-            )}
-            {fguiCommonPaths.map((handle, index) => (
-              <Tag 
-                key={index} 
-                closable 
-                onClose={() => removeFguiCommonPath(index)}
-                className="flex items-center gap-1"
+          {/* Common Paths */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-gray-700">公共包资源路径</label>
+              <Button 
+                type="dashed" 
+                size="small" 
+                icon={<PlusOutlined />} 
+                onClick={handleAddCommonPath}
               >
-                {handle.name}
-              </Tag>
-            ))}
+                添加
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {fguiCommonPaths.length === 0 && (
+                <span className="text-gray-400 text-sm">未配置公共路径</span>
+              )}
+              {fguiCommonPaths.map((handle, index) => (
+                <Tag 
+                  key={index} 
+                  closable 
+                  onClose={() => removeFguiCommonPath(index)}
+                  className="flex items-center gap-1"
+                >
+                  {handle.name}
+                </Tag>
+              ))}
+            </div>
+          </div>
+
+          {/* Overwrite Images Option */}
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-gray-700">图片导出策略</label>
+            <Checkbox 
+              checked={overwriteImages}
+              onChange={(e) => setOverwriteImages(e.target.checked)}
+            >
+              覆盖导出已有图片（不勾选则引用已有图片）
+            </Checkbox>
+            <p className="text-xs text-gray-500">
+              开启后，即使目标目录中已存在同名图片，也会用 PSD 中的新内容覆盖。
+              关闭时，会保留已有图片并复用其 ID。
+            </p>
           </div>
         </div>
-      </Form>
-    </Modal>
+      </Modal>
+    </>
   );
 };

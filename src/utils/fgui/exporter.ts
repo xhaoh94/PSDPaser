@@ -38,6 +38,7 @@ export class FguiExporter {
   private commonPaths: FileSystemDirectoryHandle[] = [];
   private bigFileHandle: FileSystemDirectoryHandle | null = null;
   private commonResources: Map<string, { id: string, packageId: string, width: number, height: number, type: string }> = new Map();
+  private overwriteImages: boolean;
   
   // 上下文
   private currentPackage: PackageContext | null = null;
@@ -52,7 +53,8 @@ export class FguiExporter {
     largeImageThreshold = 512, 
     namingRules?: NamingRules,
     commonPaths: FileSystemDirectoryHandle[] = [],
-    bigFileHandle: FileSystemDirectoryHandle | null = null
+    bigFileHandle: FileSystemDirectoryHandle | null = null,
+    overwriteImages: boolean = false
   ) {
     this.rootHandle = rootHandle;
     this.largeImageThreshold = largeImageThreshold;
@@ -60,6 +62,7 @@ export class FguiExporter {
     this.renderer = new LayerRenderer();
     this.commonPaths = commonPaths;
     this.bigFileHandle = bigFileHandle;
+    this.overwriteImages = overwriteImages;
   }
 
   // 获取子目录句柄 (如果不存在则创建)
@@ -448,8 +451,8 @@ export class FguiExporter {
     // 检查目标包中是否已存在同名资源 (去重)
     const existingRes = targetPkg.resources.find(r => r.name === fileName && r.path === filePath);
     
-    if (existingRes) {
-        // 复用
+    if (existingRes && !this.overwriteImages) {
+        // 复用（如果设置了不覆盖，且资源已存在）
         const isCrossPackage = targetPkg !== this.currentPackage;
         this.resourceMap[layer.id] = {
             id: existingRes.id,
@@ -463,7 +466,8 @@ export class FguiExporter {
         return;
     }
 
-    const fileId = generateId();
+    // 如果有已存在资源且设置了覆盖，复用ID，否则生成新ID
+    const fileId = existingRes ? existingRes.id : generateId();
 
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = finalExportWidth;
@@ -505,17 +509,28 @@ export class FguiExporter {
       path: filePath
     };
     
-    // 添加到目标包的资源列表
-    targetPkg.resources.push({
-      id: fileId,
-      name: fileName,
-      type: 'image',
-      path: filePath,
-      exported: true,
-      scale9grid: info.scale9Grid, // 传递九宫格数据 [T, R, B, L]
-      width: finalExportWidth,     // 传递实际图片尺寸，用于计算九宫格 rect
-      height: finalExportHeight
-    });
+    // 添加到目标包的资源列表（如果已存在则更新，否则添加）
+    if (existingRes) {
+      // 更新现有资源条目
+      Object.assign(existingRes, {
+        scale9grid: info.scale9Grid,
+        width: finalExportWidth,
+        height: finalExportHeight
+      });
+      console.log(`[FGUI] Updated existing resource in package: ${fileName}`);
+    } else {
+      // 添加新资源条目
+      targetPkg.resources.push({
+        id: fileId,
+        name: fileName,
+        type: 'image',
+        path: filePath,
+        exported: true,
+        scale9grid: info.scale9Grid, // 传递九宫格数据 [T, R, B, L]
+        width: finalExportWidth,     // 传递实际图片尺寸，用于计算九宫格 rect
+        height: finalExportHeight
+      });
+    }
   }
 
   // 处理组件生成

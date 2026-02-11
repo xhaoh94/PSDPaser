@@ -390,6 +390,23 @@ export async function exportImage(
     if (!blob) throw new Error('Failed to create blob');
     console.log(`[ImageExporter] Blob created: ${blob.size} bytes`);
     
+    // 检查是否已存在 .meta 文件，如果存在则保留原有的 GUID
+    let existingGuid: string | null = null;
+    try {
+      const metaFileName = `${name}.png.meta`;
+      const existingMetaHandle = await dirHandle.getFileHandle(metaFileName);
+      const existingMetaFile = await existingMetaHandle.getFile();
+      const existingMetaContent = await existingMetaFile.text();
+      const guidMatch = existingMetaContent.match(/guid:\s*([a-f0-9]{32})/i);
+      if (guidMatch) {
+        existingGuid = guidMatch[1];
+        console.log(`[ImageExporter] Found existing GUID: ${existingGuid}`);
+      }
+    } catch {
+      // .meta 文件不存在，这是正常的，将生成新的 GUID
+      console.log(`[ImageExporter] No existing meta file found for ${name}.png`);
+    }
+    
     console.log(`[ImageExporter] Getting file handle for: ${name}.png`);
     const fileHandle = await dirHandle.getFileHandle(`${name}.png`, { create: true });
     console.log(`[ImageExporter] Creating writable stream...`);
@@ -402,7 +419,7 @@ export async function exportImage(
     
     // Write Meta
     console.log(`[ImageExporter] Creating meta file: ${name}.png.meta`);
-    const guid = generateGuid();
+    const guid = existingGuid || generateGuid();
     const metaContent = generateMetaContent(guid, border);
     
     console.log(`[ImageExporter] Getting meta file handle...`);

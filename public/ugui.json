@@ -1,5 +1,6 @@
 {
   "enabled": true,
+  "overwriteImages": false,
   "spriteDirectory": "",
   "prefabOutputDirectory": "",
   "namingRules": {

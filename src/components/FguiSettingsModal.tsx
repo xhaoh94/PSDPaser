@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, Button, InputNumber, message } from 'antd';
+import { Modal, Button, InputNumber, message, Checkbox } from 'antd';
 import { FolderOpenOutlined } from '@ant-design/icons';
 import { useConfigStore } from '../stores/configStore';
 
@@ -15,7 +15,9 @@ export const FguiSettingsModal: React.FC<FguiSettingsModalProps> = ({ open, onCl
     clearFguiDirectory,
     largeImageThreshold,
     setLargeImageThreshold,
-    serverConfig
+    serverConfig,
+    overwriteImages,
+    setOverwriteImages
   } = useConfigStore();
 
   const handleSelectFolder = async () => {
@@ -98,6 +100,20 @@ export const FguiSettingsModal: React.FC<FguiSettingsModalProps> = ({ open, onCl
             />
             <span>px 时，放入 Single 包独立加载。</span>
           </div>
+        </div>
+
+        <div>
+          <h4 className="mb-2 font-medium">图片导出策略</h4>
+          <Checkbox 
+            checked={overwriteImages}
+            onChange={(e) => setOverwriteImages(e.target.checked)}
+          >
+            覆盖导出已有图片（不勾选则引用已有图片）
+          </Checkbox>
+          <p className="text-xs text-gray-500 mt-1">
+            开启后，即使目标目录中已存在同名图片，也会用 PSD 中的新内容覆盖。
+            关闭时，会保留已有图片并复用其 ID/GUID。
+          </p>
         </div>
       </div>
     </Modal>

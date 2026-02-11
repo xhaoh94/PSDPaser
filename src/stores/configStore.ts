@@ -23,6 +23,7 @@ interface ServerConfig {
   fguiProjectDir?: string; // 提示用的路径
   enabled?: boolean; // 是否启用
   namingRules?: NamingRules; // 自定义命名规则
+  overwriteImages?: boolean; // 是否覆盖导出已有图片
 }
 
 interface ConfigState {
@@ -39,6 +40,9 @@ interface ConfigState {
   
   // 服务器端加载的配置
   serverConfig: ServerConfig | null;
+  
+  // 导出配置
+  overwriteImages: boolean;
 
   // FGUI Handles
   fguiCommonPaths: FileSystemDirectoryHandle[];
@@ -73,6 +77,7 @@ interface ConfigState {
   setHasLocalConfigFile: (exists: boolean) => void;
   fetchServerConfig: () => Promise<void>;
   getNamingRules: () => NamingRules | undefined;
+  setOverwriteImages: (overwrite: boolean) => void;
 }
 
 export const useConfigStore = create<ConfigState>()(
@@ -90,6 +95,7 @@ export const useConfigStore = create<ConfigState>()(
     largeImageThreshold: 512,
     hasLocalConfigFile: false,
     serverConfig: null,
+    overwriteImages: false,
 
     setFguiDirectory: (handle) => {
       saveDirectoryHandle(handle, 'fguiDirectoryHandle');
@@ -175,7 +181,12 @@ export const useConfigStore = create<ConfigState>()(
           const config = await response.json();
           // 如果配置文件存在，默认视为启用
           if (config.enabled === undefined) config.enabled = true;
-          set({ serverConfig: config });
+          // 加载 overwriteImages 配置
+          const overwriteImages = config.overwriteImages !== undefined ? config.overwriteImages : false;
+          set({ 
+            serverConfig: config,
+            overwriteImages: overwriteImages
+          });
           console.log('[Config] 加载服务器配置成功:', config);
         } else {
           set({ serverConfig: null });
@@ -189,6 +200,8 @@ export const useConfigStore = create<ConfigState>()(
     getNamingRules: () => {
       return get().serverConfig?.namingRules;
     },
+    
+    setOverwriteImages: (overwrite) => set({ overwriteImages: overwrite }),
 
     setUguiSpriteDirectory: (handle) => {
       saveDirectoryHandle(handle, 'uguiSpriteDirHandle');

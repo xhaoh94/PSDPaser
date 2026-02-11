@@ -15,6 +15,7 @@ export class UGUIExporter {
   private bigFileThreshold: number = 512; // 大图阈值
   private fontDirHandle: FileSystemDirectoryHandle | null = null;
   private fontMap: Map<string, string> = new Map(); // FontName -> GUID
+  private overwriteImages: boolean;
 
   constructor(
     spriteDirHandle: FileSystemDirectoryHandle,
@@ -23,11 +24,13 @@ export class UGUIExporter {
     commonPaths?: FileSystemDirectoryHandle[],
     bigFileDirHandle?: FileSystemDirectoryHandle | null,
     bigFileThreshold?: number,
-    fontDirHandle?: FileSystemDirectoryHandle | null
+    fontDirHandle?: FileSystemDirectoryHandle | null,
+    overwriteImages?: boolean
   ) {
     this.spriteDirHandle = spriteDirHandle;
     this.outputDirHandle = outputDirHandle;
     this.namingRules = namingRules;
+    this.overwriteImages = overwriteImages || false;
     this.commonPaths = commonPaths || [];
     this.bigFileDirHandle = bigFileDirHandle || null;
     this.bigFileThreshold = bigFileThreshold || 512;
@@ -236,7 +239,8 @@ export class UGUIExporter {
       }
 
       if (info.type === 'Image') {
-        if (!map.has(info.exportName)) {
+        const spriteExists = map.has(info.exportName);
+        if (!spriteExists || this.overwriteImages) {
           try {
             // 检查图片尺寸，决定导出到哪个目录
             const layerWidth = layer.bounds.right - layer.bounds.left;
@@ -249,7 +253,11 @@ export class UGUIExporter {
               targetDir = this.bigFileDirHandle;
               console.log(`[UGUI] Big file detected (${layerWidth}x${layerHeight}), exporting to bigfile: ${info.exportName}`);
             } else {
-              console.log(`[UGUI] Exporting missing sprite: ${info.exportName}`);
+              if (spriteExists) {
+                console.log(`[UGUI] Overwriting existing sprite: ${info.exportName}`);
+              } else {
+                console.log(`[UGUI] Exporting missing sprite: ${info.exportName}`);
+              }
             }
             const sprite = await exportImage(layer, targetDir, info.exportName, info.border, info.targetSize);
             if (sprite) {
@@ -262,11 +270,11 @@ export class UGUIExporter {
             console.error(`[UGUI] Failed to export sprite ${info.exportName}:`, e);
           }
         } else {
-          // 如果已存在，也要打印日志确认使用了哪个文件
+          // 如果已存在，且未设置覆盖，则复用现有资源
           if (info.exportName.includes('usual_img9_j6')) {
             console.log(`[UGUI] DEBUG: Using existing sprite for ${info.exportName}:`, map.get(info.exportName));
           }
-          console.log(`[UGUI] Sprite already exists: ${info.exportName}`);
+          console.log(`[UGUI] Sprite already exists (reuse): ${info.exportName}`);
         }
       }
     }

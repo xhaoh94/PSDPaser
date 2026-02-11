@@ -52,7 +52,7 @@ function App() {
   const { setDocument, setLoading, setError, isLoading, document: psdDoc, fileName: currentFileName } = usePsdStore();
   const { layerPanelHeight, setLayerPanelHeight, leftSiderWidth, setLeftSiderWidth } = useUiStore();
   const { clearSelection } = useSelectionStore();
-  const { fguiProjectName, fguiDirHandle, largeImageThreshold, fetchServerConfig, serverConfig, restoreFguiDirectory, getNamingRules, restoreUguiDirectories, uguiSpriteDirHandle, uguiOutputDirHandle, uguiCommonPaths, uguiBigFileDirHandle, uguiFontDirHandle, fguiCommonPaths, fguiBigFileDirHandle } = useConfigStore();
+  const { fguiProjectName, fguiDirHandle, largeImageThreshold, fetchServerConfig, serverConfig, restoreFguiDirectory, getNamingRules, restoreUguiDirectories, uguiSpriteDirHandle, uguiOutputDirHandle, uguiCommonPaths, uguiBigFileDirHandle, uguiFontDirHandle, fguiCommonPaths, fguiBigFileDirHandle, overwriteImages } = useConfigStore();
   const [selectedFile, setSelectedFile] = useState<PsdFileInfo | null>(null);
   const [parseProgress, setParseProgress] = useState<number>(0);
   
@@ -212,7 +212,8 @@ function App() {
       largeImageThreshold, 
       namingRules,
       fguiCommonPaths,
-      fguiBigFileDirHandle
+      fguiBigFileDirHandle,
+      overwriteImages
     );
 
     // 检查界面是否已存在
@@ -292,7 +293,8 @@ function App() {
         uguiCommonPaths,
         uguiBigFileDirHandle,
         512, // 大图阈值
-        uguiFontDirHandle // 字体目录
+        uguiFontDirHandle, // 字体目录
+        overwriteImages
       );
       
       // 传入确认覆盖的回调
