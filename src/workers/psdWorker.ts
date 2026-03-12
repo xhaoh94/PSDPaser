@@ -161,33 +161,26 @@ function convertLayerSerializable(layer: Record<string, unknown>, psd: Record<st
     // DEBUG: 打印特定图层的 vectorFill 信息
     const layerName = layer.name as string || '';
     if (layerName.includes('league_prog_bg_dqsc')) {
-       // console.warn(`[Worker] DEBUG LAYER: ${layerName}`);
-       // console.warn(`- vectorFill:`, JSON.stringify(fill));
-       // console.warn(`- effects:`, JSON.stringify(layer.effects));
-       // console.warn(`- solidColor:`, JSON.stringify((layer as any).solidColor));
-       // console.warn(`- blendMode:`, layer.blendMode);
-       // console.warn(`- opacity:`, layer.opacity);
+       // 调试代码已清理
     }
 
     if (fill.type === 'gradient' && fill.gradient) {
       // 构造模拟的 gradientOverlay
-      const gradientOverlay = {
+      const overlay = {
         opacity: 1,
         angle: fill.angle ?? 90,
         scale: fill.scale ?? 1,
         gradient: fill.gradient,
         blendMode: 'normal'
       };
-      
-      // console.warn(`[Worker] Converted vector gradient to overlay for ${layer.name}`);
-      
+
       // 如果没有现有的渐变叠加，则使用填充渐变
       // 注意：这里我们创建一个新的对象以避免修改原始数据
       if (!effectsData.gradientOverlay) {
-        effectsData = { ...effectsData, gradientOverlay: [gradientOverlay] };
+        effectsData = { ...effectsData, gradientOverlay: [overlay] };
       }
     } else {
-       // console.warn(`[Worker] vectorFill type mismatch: ${fill.type}`);
+      // vectorFill type 不匹配，不处理
     }
   }
 

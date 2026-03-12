@@ -271,8 +271,6 @@ export async function exportImage(
   border: [number, number, number, number] = [0, 0, 0, 0],
   targetSize?: { width: number, height: number }
 ): Promise<SpriteInfo | null> {
-  console.log(`[ImageExporter] Starting export for: ${name}`);
-  
   try {
     const renderer = new LayerRenderer();
     
@@ -321,7 +319,6 @@ export async function exportImage(
         
         // 目前先作为透明底图，依赖 LayerRenderer 应用效果
         layer.canvas = blankCanvas;
-        console.log(`[ImageExporter] Created ${shouldUseMaskBounds ? 'black' : 'blank'} canvas for ${layer.name}`);
       } else {
         console.warn(`[ImageExporter] Skipping export for ${layer.name} due to invalid bounds (0x0)`);
         return null;
@@ -337,13 +334,11 @@ export async function exportImage(
       console.warn(`[ImageExporter] Skipping export for ${layer.name}: no canvas content after processing`);
       return null;
     }
-    
+
     // Trim Transparent Pixels
     // 自动修剪周围的透明区域，解决因阴影等效果导致的多余空白
-    console.log(`[ImageExporter] Trimming canvas for ${name}...`);
     finalCanvas = trimCanvas(finalCanvas);
-    console.log(`[ImageExporter] Canvas ready: ${finalCanvas.width}x${finalCanvas.height}`);
-    
+
     // 如果有 targetSize (九宫格还原)，使用该尺寸作为导出尺寸
     let exportWidth = finalCanvas.width;
     let exportHeight = finalCanvas.height;

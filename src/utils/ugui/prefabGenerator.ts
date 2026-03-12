@@ -88,9 +88,6 @@ export class PrefabGenerator {
       // 如果文本有描边，需要额外的 Outline 组件
       if (hasStroke) {
         node.outlineId = this.generateId();
-        console.log(`[PrefabGenerator] Text "${layer.name}" has stroke, created outlineId: ${node.outlineId}, strokeColor: ${layer.textInfo?.strokeColor}, strokeWidth: ${layer.textInfo?.strokeWidth}`);
-      } else if (isText) {
-        console.log(`[PrefabGenerator] Text "${layer.name}" no stroke - strokeColor: ${layer.textInfo?.strokeColor}, strokeWidth: ${layer.textInfo?.strokeWidth}`);
       }
       
       if (info.type === 'Image') {
@@ -116,10 +113,8 @@ export class PrefabGenerator {
       // 如果有描边，添加 Outline 组件
       if (node.outlineId) {
         components.push(node.outlineId);
-        console.log(`[PrefabGenerator] Added outlineId ${node.outlineId} to GameObject "${node.info.exportName}"`);
       }
-      
-      console.log(`[PrefabGenerator] GameObject "${node.info.exportName}" components:`, components);
+
       this.builder.buildGameObject(node.gameObjectId, node.info.exportName, components, node.layer.visible);
       if (node.children.length > 0) this.generateGameObjects(node.children);
     }
@@ -323,17 +318,12 @@ export class PrefabGenerator {
           width: node.layer.effects.stroke[0].width 
         } : null;
         const strokeInfo = textStyleStroke || effectStroke;
-        
-        console.log(`[PrefabGenerator] Checking outline for "${node.layer.name}": outlineId=${node.outlineId}, textStyleStroke=${!!textStyleStroke}, effectStroke=${!!effectStroke}`);
-        
+
         if (node.outlineId && strokeInfo) {
           const strokeColor = this.hexToColor(strokeInfo.color, node.layer.opacity);
           // effectDistance 基于 strokeWidth，默认 1px 描边距离
           const distance = Math.max(1, Math.round(strokeInfo.width / 2));
-          console.log(`[PrefabGenerator] Building Outline for "${node.layer.name}" with color:`, strokeColor, `distance: ${distance}`);
           this.builder.buildOutline(node.outlineId, node.gameObjectId, strokeColor, {x: distance, y: -distance});
-        } else {
-          console.log(`[PrefabGenerator] Skipping outline for "${node.layer.name}" - no stroke info found`);
         }
       }
       
@@ -384,14 +374,7 @@ export class PrefabGenerator {
         richText += `<color=${runColor}>${run.text}</color>`;
       }
     }
-    
-    console.log(`[PrefabGenerator] Multi-color text processed:`, {
-      original: text,
-      mainColor,
-      richText,
-      colorCount: Object.fromEntries(colorCount)
-    });
-    
+
     return { mainColor, richText };
   }
 

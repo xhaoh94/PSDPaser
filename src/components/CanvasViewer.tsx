@@ -438,7 +438,6 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
     if (document.canvas) {
       // 合成图像已包含正确的描边、阴影等效果
       ctx.drawImage(document.canvas, 0, 0);
-      console.log('[CanvasViewer] 使用合成图像渲染');
     } else {
       // 回退：使用棋盘格背景 + 逐层渲染
       drawCheckerboard(ctx, document.width, document.height);
@@ -446,12 +445,11 @@ export const CanvasViewer: React.FC<CanvasViewerProps> = ({ onLayerClick }) => {
     }
 
     // 绘制边框
-    ctx.strokeStyle = '#666';
+    ctx.strokeStyle = '#e8eaed';
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, document.width, document.height);
 
     offscreenValidRef.current = true;
-    console.log('[CanvasViewer] 离屏缓存已更新');
   }, [document, drawCheckerboard, drawLayers]);
 
   // 文档变化时更新离屏缓存

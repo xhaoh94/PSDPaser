@@ -183,11 +183,10 @@ export const useConfigStore = create<ConfigState>()(
           if (config.enabled === undefined) config.enabled = true;
           // 加载 overwriteImages 配置
           const overwriteImages = config.overwriteImages !== undefined ? config.overwriteImages : false;
-          set({ 
+          set({
             serverConfig: config,
             overwriteImages: overwriteImages
           });
-          console.log('[Config] 加载服务器配置成功:', config);
         } else {
           set({ serverConfig: null });
         }

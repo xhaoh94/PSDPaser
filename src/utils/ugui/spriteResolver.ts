@@ -116,8 +116,6 @@ export async function scanMultipleSpriteDirectories(
   for (const [key, value] of primaryMap) {
     finalMap.set(key, value);
   }
-  
-  console.log(`[SpriteResolver] Scanned ${primaryMap.size} sprites from primary dir, ${commonMap.size} from common paths. Total: ${finalMap.size}`);
-  
+
   return finalMap;
 }
