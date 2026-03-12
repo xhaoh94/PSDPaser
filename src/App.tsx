@@ -366,10 +366,7 @@ function App() {
           <div className="flex flex-col h-full">
             {/* App Title / Logo Area (Minimal) */}
             <div className="h-12 flex items-center px-4 border-b border-border bg-gray-50/50 shrink-0 justify-between">
-              <div className="font-bold text-lg text-gray-800 tracking-tight flex items-center gap-2">
-                <span className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center text-white text-xs">P</span>
-                PSD 解析器
-              </div>
+            
             </div>
 
             {/* Sidebar Content (File Navigation + Layer Tree) */}
