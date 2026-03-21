@@ -5,6 +5,7 @@ node_modules/
 .opencode/
 .sisyphus/
 AGENTS.md
+TestPsd/
 
 # Build outputs
 dist/
